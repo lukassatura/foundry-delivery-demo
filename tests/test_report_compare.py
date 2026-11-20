@@ -44,6 +44,13 @@ def test_ignores_change_below_threshold():
     assert find_deviations(request) == []
 
 
+def test_flags_change_of_exactly_the_threshold():
+    request = parse_request(
+        request_text("item,amount\nUtilities,1000\nRent,5000", "item,amount\nUtilities,1100\nRent,4500")
+    )
+    assert [(d.item, d.change_pct) for d in find_deviations(request)] == [("Rent", -10.0), ("Utilities", 10.0)]
+
+
 def test_flags_amount_that_starts_from_zero():
     request = parse_request(request_text("item,amount\nTraining,0", "item,amount\nTraining,500"))
     assert [d.item for d in find_deviations(request)] == ["Training"]

@@ -115,4 +115,4 @@ def find_deviations(request: Request) -> list[Deviation]:
 
 
 def exceeds_threshold(change: float, threshold_pct: float) -> bool:
-    return abs(change) > threshold_pct
+    return abs(change) >= threshold_pct
