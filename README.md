@@ -86,15 +86,18 @@ git push -u origin main
 
 ### 4. Switch on Claude Code Review
 
-1. In claude.ai, open **Admin settings → Claude Code → Code review** and turn on **Allow code review**.
-2. Connect GitHub and install the Claude GitHub App on the repository.
-3. Edit the repository row: **Review runs** = *After every push*, **Review level** = *Standard*.
+1. Install the Claude GitHub App (https://github.com/apps/claude) on the account or organization that owns the repository, with access to the repository. This is not the GitHub connector of claude.ai chat.
+2. In claude.ai, open **Admin settings → Claude Code → Code review** and turn on **Allow code review**. If a **Finish connecting GitHub** button appears, click it.
+3. Click **Add**, search for the repository, add it and click **Finish**.
+4. Edit the repository row: **Review runs** = *After every push*, **Review level** = *Standard*.
+
+Install the app before you create the ruleset. GitHub accepts the Claude app as the source of the required `Claude Code Review` check only when the app can access the repository.
 
 ### 5. Add the approver and the ruleset
 
 ```bash
 gh api -X PUT repos/OWNER/foundry-delivery-demo/collaborators/APPROVER -f permission=push
-echo "* @APPROVER" > .github/CODEOWNERS   # commit and push
+echo "* @APPROVER" > .github/CODEOWNERS   # commit and push; the approver must accept the invitation first
 gh api -X POST repos/OWNER/foundry-delivery-demo/rulesets --input infra/ruleset.json
 ```
 
