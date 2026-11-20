@@ -7,15 +7,17 @@ Sign in in the window that opens, then close the window. The profile keeps the s
 the recording runs.
 """
 
+import os
 import sys
 from pathlib import Path
 
 from playwright.sync_api import sync_playwright
 
 PROFILES = Path.home() / ".cache/foundry-demo-recorder/profiles"
+REPO = os.environ.get("DEMO_REPO", "lukassatura/foundry-delivery-demo")
 START_PAGES = {
     "developer": ["https://github.com/login", "https://ai.azure.com/"],
-    "approver": ["https://github.com/login"],
+    "approver": ["https://github.com/login", f"https://github.com/{REPO}/invitations"],
 }
 
 
