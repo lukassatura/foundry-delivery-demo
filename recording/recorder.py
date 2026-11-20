@@ -172,7 +172,8 @@ def render_clip(out_dir: Path, name: str) -> Path:
         duration = max((nxt[0] - t) / speed, 0)
         if duration > 0:
             lines.append(f"file '{path.resolve()}'\nduration {duration:.4f}\n")
-    lines.append(f"file '{shots[-1][2].resolve()}'\n")
+    # The concat demuxer needs the last file twice; give the repeat one frame, not a full extra duration.
+    lines.append(f"file '{shots[-1][2].resolve()}'\nduration {1 / FPS:.4f}\n")
     listing = work / "frames.txt"
     listing.write_text("".join(lines))
     output = out_dir / f"{name}.mp4"
@@ -199,7 +200,13 @@ def compose(frame_path: Path, step: str, caption: str, speed: float = 1.0) -> Im
     if step:
         draw.text((x, middle), step.upper(), font=SMALL_FONT, fill=ACCENT, anchor="lm")
         x += int(draw.textlength(step.upper(), font=SMALL_FONT)) + 36
-    draw.text((x, middle), caption, font=FONT, fill=TEXT, anchor="lm")
+    room = VIDEO_SIZE[0] - x - (220 if speed > 1 else 48)
+    font = FONT
+    for size in range(40, 25, -2):
+        font = ImageFont.truetype("/System/Library/Fonts/HelveticaNeue.ttc", size, index=1)
+        if draw.textlength(caption, font=font) <= room:
+            break
+    draw.text((x, middle), caption, font=font, fill=TEXT, anchor="lm")
     if speed > 1:
         draw.text((VIDEO_SIZE[0] - 48, middle), f"▶▶ {speed:g}×", font=SMALL_FONT, fill=MUTED, anchor="rm")
     return canvas

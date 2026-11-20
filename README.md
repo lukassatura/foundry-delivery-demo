@@ -46,7 +46,7 @@ The merge gate is the ruleset in `infra/ruleset.json`:
 
 - Azure: Owner on a resource group in a region with hosted agents (this demo uses Sweden Central).
 - GitHub: a repository where rulesets work. That is a public repository, or a private one on GitHub Pro, Team or Enterprise.
-- Claude: a Team or Enterprise organisation with Code Review switched on and usage credits.
+- Claude: a Team or Enterprise organisation with Code Review switched on. Code Review is paid only from extra usage credits (claude.ai/admin-settings/usage). Without credits, Claude posts "Code review skipped" and no check run appears. Set a monthly spend limit.
 - A second GitHub account for the approver, with write access to the repository.
 - Tools: `az` 2.80 or later, `gh`, `jq`, Python 3.13.
 
@@ -124,7 +124,7 @@ git push -f origin demo-start demo-feature
 
 ## The demo
 
-The demo takes about 20 minutes live, most of it waiting for the review and the pipeline. Use the waiting time for questions. The recording in `recording/out/` is the backup.
+The demo takes about 20 minutes live. A Claude review of this small change takes 3 to 5 minutes, and the pipeline about 5 minutes. Use the waiting time for questions. The recording is the backup.
 
 ### Before the call
 

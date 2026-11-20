@@ -7,3 +7,4 @@ eval-results.json
 recording/out/
 *.zip
 infra/demo.env
+deliverables/

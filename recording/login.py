@@ -2,9 +2,10 @@
 
   python recording/login.py developer   # GitHub as the developer, and the Foundry portal
   python recording/login.py approver    # GitHub as the approver
+  python recording/login.py developer https://ai.azure.com/   # only the given pages
 
-Sign in in the window that opens, then close the window. The profile keeps the session for
-the recording runs.
+Sign in in the window that opens, then quit the browser (Cmd+Q). The profile keeps the
+session for the recording runs. For Microsoft sign-in, answer Yes to "Stay signed in?".
 """
 
 import os
@@ -27,10 +28,10 @@ def main() -> None:
         context = playwright.chromium.launch_persistent_context(
             PROFILES / role, channel="chromium", headless=False, viewport={"width": 1280, "height": 800}
         )
-        for i, url in enumerate(START_PAGES[role]):
+        for i, url in enumerate(sys.argv[2:] or START_PAGES[role]):
             page = context.pages[0] if i == 0 and context.pages else context.new_page()
             page.goto(url)
-        print(f"Sign in as the {role} in the browser window, then close it.")
+        print(f"Sign in as the {role} in the browser window, then quit the browser with Cmd+Q.")
         context.wait_for_event("close", timeout=0)
 
 
