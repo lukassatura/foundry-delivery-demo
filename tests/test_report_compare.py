@@ -47,3 +47,15 @@ def test_ignores_change_below_threshold():
 def test_flags_amount_that_starts_from_zero():
     request = parse_request(request_text("item,amount\nTraining,0", "item,amount\nTraining,500"))
     assert [d.item for d in find_deviations(request)] == ["Training"]
+
+
+def test_reports_item_missing_from_current_report():
+    request = parse_request(request_text("item,amount\nPrinting,300\nTravel,1000", "item,amount\nTravel,1000"))
+    [deviation] = find_deviations(request)
+    assert (deviation.item, deviation.kind) == ("Printing", "removed")
+
+
+def test_reports_item_new_in_current_report():
+    request = parse_request(request_text("item,amount\nTravel,1000", "item,amount,note\nTravel,1000,\nCloud hosting,2400,Test site"))
+    [deviation] = find_deviations(request)
+    assert (deviation.item, deviation.kind, deviation.note) == ("Cloud hosting", "new", "Test site")

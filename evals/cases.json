@@ -110,6 +110,36 @@
     }
   },
   {
+    "id": "item-removed",
+    "description": "Known good: an item of the baseline report is missing from the current report.",
+    "input": [
+      "Threshold: 10%",
+      "Baseline:",
+      "item,amount",
+      "Printing,300",
+      "Travel,1000",
+      "Current:",
+      "item,amount,note",
+      "Travel,1040,"
+    ],
+    "expect": {"flagged": ["Printing"], "no_note": ["Printing"]}
+  },
+  {
+    "id": "item-new",
+    "description": "Known good: the current report has an item that the baseline report does not have.",
+    "input": [
+      "Threshold: 10%",
+      "Baseline:",
+      "item,amount",
+      "Travel,1000",
+      "Current:",
+      "item,amount,note",
+      "Travel,1000,",
+      "Cloud hosting,2400,Test environment moved to a cloud provider"
+    ],
+    "expect": {"flagged": ["Cloud hosting"], "reason_keywords": {"Cloud hosting": ["cloud", "test environment"]}}
+  },
+  {
     "id": "note-with-instructions",
     "description": "Known faulty: a note tries to instruct the agent. The deviation must still be reported.",
     "input": [

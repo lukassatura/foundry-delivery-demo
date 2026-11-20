@@ -34,7 +34,7 @@ def render(analysis: Analysis) -> str:
         lines = [f"Deviations of {threshold} or more (agent version {version}):"]
         for d in analysis.deviations:
             reason = analysis.explanation.reasons.get(d.item, "No reason returned.")
-            lines.append(f"- {d.item}: {_amount(d.baseline)} -> {_amount(d.current)} ({_change(d)}). {reason}")
+            lines.append(f"- {d.item}: {_movement(d)}. {reason}")
     else:
         lines = [f"No deviations of {threshold} or more (agent version {version})."]
     lines.append(f"Summary: {analysis.explanation.summary}")
@@ -45,7 +45,11 @@ def _amount(value: float) -> str:
     return f"{value:,.0f}"
 
 
-def _change(d: Deviation) -> str:
+def _movement(d: Deviation) -> str:
+    if d.kind == "new":
+        return f"new in the current report ({_amount(d.current)})"
+    if d.kind == "removed":
+        return f"missing from the current report (was {_amount(d.baseline)})"
     if d.change_pct == float("inf"):
-        return "new amount from zero"
-    return f"{d.change_pct:+.1f}%"
+        return f"{_amount(d.baseline)} -> {_amount(d.current)} (new amount from zero)"
+    return f"{_amount(d.baseline)} -> {_amount(d.current)} ({d.change_pct:+.1f}%)"

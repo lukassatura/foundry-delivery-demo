@@ -14,6 +14,8 @@ from report_compare import Deviation, Request
 INSTRUCTIONS = """\
 You explain deviations between two financial reports to a finance manager.
 For each deviation, write one sentence of at most 20 words that gives the reason.
+A deviation of kind "new" is an item that appears only in the current report.
+A deviation of kind "removed" is an item that appears only in the baseline report.
 Use the note from the current report when there is one, and keep its meaning exactly.
 When the note is empty, write exactly: No explanation given in the report.
 Also write a one-sentence summary of the comparison.
@@ -63,6 +65,7 @@ def explain(request: Request, deviations: list[Deviation]) -> Explanation:
         "deviations": [
             {
                 "item": d.item,
+                "kind": d.kind,
                 "baseline": d.baseline,
                 "current": d.current,
                 "change_pct": None if d.change_pct in (float("inf"), float("-inf")) else round(d.change_pct, 1),
