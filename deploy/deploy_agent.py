@@ -61,6 +61,14 @@ def definition() -> HostedAgentDefinition:
     )
 
 
+def runs_same_source(project, version: str, code_hash: str) -> bool:
+    deployed = project.agents.get_version(agent_name=AGENT_NAME, agent_version=version).as_dict()["definition"]
+    return (
+        (deployed.get("code_configuration") or {}).get("content_hash") == code_hash
+        and deployed.get("environment_variables") == definition().environment_variables
+    )
+
+
 def test_candidate(project, version: str) -> None:
     """Call the new version in its own session, before it serves any production traffic."""
     session = project.agents.create_session(
@@ -89,21 +97,23 @@ def main() -> int:
         print("The agent has no active version yet.", flush=True)
 
     code = build_zip()
+    code_hash = hashlib.sha256(code).hexdigest()
     commit = os.environ.get("GITHUB_SHA", "local")
+    if production and runs_same_source(project, production, code_hash):
+        print(f"Version {production} already runs this agent source. Nothing to deploy.")
+        write_summary(["## Deployment", "", f"Version {production} already runs this agent source. Nothing to deploy."])
+        return 0
+
     created = project.agents.create_version_from_code(
         agent_name=AGENT_NAME,
         definition=definition(),
         code=("agent.zip", code, "application/zip"),
-        code_zip_sha256=hashlib.sha256(code).hexdigest(),
+        code_zip_sha256=code_hash,
         description=f"Source commit {commit[:7]}",
         metadata={"git_commit": commit, "pipeline_run": os.environ.get("PIPELINE_RUN_URL", "local")},
     )
     candidate = created.version
     print(f"Created version {candidate}.", flush=True)
-    if candidate == production:
-        print("The source is unchanged, so Foundry returned the version that already serves traffic.")
-        return 0
-
     wait_until_active(project, candidate)
     test_candidate(project, candidate)
     route_all_traffic_to(project, candidate)
