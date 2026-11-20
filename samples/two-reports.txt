@@ -1,0 +1,13 @@
+Threshold: 10%
+Baseline:
+item,amount
+Travel,1000
+Printing,300
+Office rent,5000
+Training,2000
+Current:
+item,amount,note
+Travel,1250,Two customer workshops moved from the first quarter
+Office rent,5000,
+Training,2200,New onboarding course for the support team
+Cloud hosting,2400,Test environment moved to a cloud provider
