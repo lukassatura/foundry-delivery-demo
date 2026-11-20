@@ -1,12 +1,12 @@
 """Route all traffic of the hosted agent back to an earlier version.
 
 Usage: python deploy/rollback_agent.py [VERSION]
-Without VERSION, the script picks the version before the one that serves traffic now.
+Without VERSION, the script returns to the version that the current one replaced.
 """
 
 import sys
 
-from foundry import active_versions, ask_agent, project_client, route_all_traffic_to, served_version, write_summary
+from foundry import AGENT_NAME, active_versions, ask_agent, project_client, route_all_traffic_to, served_version, write_summary
 
 
 def main() -> int:
@@ -14,6 +14,9 @@ def main() -> int:
     current = served_version(project)
     target = sys.argv[1] if len(sys.argv) > 1 and sys.argv[1] else None
     if target is None:
+        metadata = project.agents.get_version(agent_name=AGENT_NAME, agent_version=current).as_dict().get("metadata") or {}
+        target = metadata.get("replaces_version")
+    if not target:
         older = [v for v in active_versions(project) if int(v) < int(current)]
         if not older:
             print(f"No active version is older than version {current}.")

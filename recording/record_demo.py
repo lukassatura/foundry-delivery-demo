@@ -1,11 +1,11 @@
 """Run the demo for real and record it, one phase at a time.
 
-  python recording/record_demo.py change      # 1: the change and the local review, then the pull request
+  python recording/record_demo.py change      # 1 and 2: the local review, then the pull request in GitHub
   python recording/record_demo.py review      # 2: Claude Code Review blocks the merge
   python recording/record_demo.py fix         # 3: the fix, the passing gate and the approval, then the merge
   python recording/record_demo.py approve     # 3 again from the passing gate, when the fix is already pushed
   python recording/record_demo.py pipeline    # 4 and 5: tests, evaluation and deploy
-  python recording/record_demo.py result      # 6: the new version answers, then the rollback
+  python recording/record_demo.py result      # 6: the new version answers in Foundry, then the rollback
   python recording/record_demo.py fallback    # a failing evaluation on the branch with the planted flaw
   python recording/record_demo.py render      # title cards and the final MP4 files
 
@@ -25,6 +25,7 @@ from playwright.sync_api import Page, sync_playwright
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from recorder import SCALE, VIEWPORT, Recorder, render, title_card  # noqa: E402
 from terminal import TerminalView  # noqa: E402
+import foundry  # noqa: E402
 
 REPO = os.environ.get("DEMO_REPO", "lukassatura/foundry-delivery-demo")
 FEATURE_BRANCH = "feature/report-missing-items"
@@ -36,8 +37,6 @@ CLONE = DEVBOX / "foundry-delivery-demo"
 COMMIT_EMAIL = os.environ.get("DEMO_COMMIT_EMAIL", "49922924+lukassatura@users.noreply.github.com")
 REVIEW_TOOLS = '--allowedTools "Bash(git diff:*)" "Bash(git log:*)" Read Grep Glob'
 FIX_TOOLS = '--allowedTools Read Edit Grep Glob "Bash(git diff:*)" "Bash(python -m pytest:*)" "Bash(.venv/bin/python -m pytest:*)"'
-# The recording machine sometimes drops a TLS connection; retry quietly instead of showing a stack trace.
-ASK = " || ".join([".venv/bin/python deploy/ask_agent.py samples/two-reports.txt 2>/dev/null"] * 4)
 GITHUB_HIDE_CSS = """
   .AppHeader-globalBar-end .AppHeader-user, .Header-item--full ~ .Header-item img.avatar { visibility: hidden !important; }
   .js-notification-shelf, .flash-full, [data-target="feature-callout.callout"] { display: none !important; }
@@ -195,30 +194,31 @@ def phase_change(playwright) -> None:
     browser, page = terminal_page(playwright)
     term = TerminalView(page, cwd=str(CLONE), title="foundry-delivery-demo")
     rec = Recorder(OUT)
-    rec.say("A developer added a feature to the agent with Claude Code", step="1  Change")
+    rec.say("A developer changed the agent with Claude Code and runs the team's review skill", step="1  Change")
     rec.start(page, "01-change")
-    term.run("git log --oneline -1")
-    term.run("git diff main --stat")
-    rec.hold(2)
-    rec.say("New: report items that appear in only one of the two reports")
-    term.run("git diff main -- agent/report_compare.py | tail -32")
-    rec.hold(4)
-    term.clear()
-    rec.say("Before the pull request, the developer runs the team's review skill")
-    rec.fast(10)
+    rec.fast(12)
     term.run(f'claude -p "/review-change" {REVIEW_TOOLS}', shown='claude -p "/review-change"')
     rec.normal()
     rec.say("The local review flags a problem. It is advice only: nothing stops the push")
-    rec.hold(6)
-    term.clear()
-    rec.say("The developer opens a pull request", step="2  Pull request")
-    term.run("git push origin HEAD")
-    pr_url_file = DEVBOX / "pr-url.txt"
-    term.run(f"gh pr create --fill --base main | tee {pr_url_file}", shown="gh pr create --fill")
-    rec.hold(2)
+    rec.hold(5)
     rec.stop()
     browser.close()
-    pr_url = pr_url_file.read_text().strip().splitlines()[-1]
+
+    context, page = open_profile(playwright, "developer")
+    goto(page, f"https://github.com/{REPO}/compare/main...{FEATURE_BRANCH}?expand=1")
+    rec.say("The developer opens a pull request", step="2  Pull request")
+    rec.start(page, "02a-open")
+    rec.hold(2.5)
+    page.get_by_role("button", name="Create pull request").last.click()
+    page.wait_for_url("**/pull/*", timeout=30000)
+    page.wait_for_timeout(8000)
+    pr_url = page.url.split("#")[0].split("?")[0]
+    goto(page, pr_url)
+    rec.say("Claude Code Review and the unit tests start on every push")
+    show_merge_box(page)
+    rec.hold(4)
+    rec.stop()
+    context.close()
     save_state(pr_url=pr_url, pr_number=int(pr_url.rstrip("/").split("/")[-1]))
     print(f"Pull request: {pr_url}")
 
@@ -229,13 +229,7 @@ def phase_review(playwright) -> None:
     head = gh_json(f"repos/{REPO}/pulls/{pr}")["head"]["sha"]
     context, page = open_profile(playwright, "developer")
     rec = Recorder(OUT)
-    rec.say("Claude Code Review and the unit tests start on every push", step="2  Pull request")
-    goto(page, f"https://github.com/{REPO}/pull/{pr}")
-    rec.start(page, "02a-checks")
-    show_merge_box(page)
-    rec.hold(5)
-    rec.stop()
-
+    rec.step = "2  Pull request"
     wait_for("Claude Code Review", lambda: claude_check(head))
     wait_for("the review gate", lambda: job_check(head, "review-gate"), timeout_s=600)
     goto(page, f"https://github.com/{REPO}/pull/{pr}")
@@ -252,28 +246,12 @@ def phase_review(playwright) -> None:
 
 
 def phase_fix(playwright) -> None:
-    state = load_state()
-    pr = state["pr_number"]
-    browser, page = terminal_page(playwright)
-    term = TerminalView(page, cwd=str(CLONE), title="foundry-delivery-demo")
-    rec = Recorder(OUT)
-    rec.say("The developer asks Claude Code to fix the finding", step="3  Fix and approval")
-    rec.start(page, "03a-fix")
+    """The developer fixes the finding with Claude Code and pushes. The recording shows the commit in GitHub."""
     prompt = ("Fix the Important finding from the code review on this branch, and add a unit test "
               "for a change of exactly the threshold. Keep the change small.")
-    rec.fast(10)
-    term.run(f'claude -p "{prompt}" {FIX_TOOLS}', shown=f'claude -p "{prompt}"')
-    rec.normal()
-    term.clear()
-    rec.say("The fix: >= instead of >, and a unit test for the boundary")
-    term.run("git diff -- agent/")
-    rec.hold(3)
-    rec.say("The tests pass. The developer pushes the fix")
-    term.run(".venv/bin/python -m pytest -q", shown="python -m pytest -q")
-    term.run('git commit -qam "Report a change of exactly the threshold" && git push -q origin HEAD')
-    rec.hold(2)
-    rec.stop()
-    browser.close()
+    print(sh(f'claude -p "{prompt}" {FIX_TOOLS}', cwd=CLONE)[-600:])
+    print(sh(".venv/bin/python -m pytest -q", cwd=CLONE).splitlines()[-1])
+    sh('git commit -qam "Report a change of exactly the threshold" && git push -q origin HEAD', cwd=CLONE)
     phase_approve(playwright)
 
 
@@ -287,6 +265,14 @@ def phase_approve(playwright) -> None:
     print(f"review-gate: {gate['conclusion']}")
 
     context, page = open_profile(playwright, "developer")
+    goto(page, f"https://github.com/{REPO}/pull/{pr}/commits/{head}")
+    rec.say("The developer fixes it with Claude Code: >= instead of >, and a boundary test")
+    rec.start(page, "03a-fix")
+    rec.hold(4)
+    smooth_scroll(page, 450)
+    rec.hold(4)
+    rec.stop()
+
     goto(page, f"https://github.com/{REPO}/pull/{pr}")
     rec.say("Claude reviews the new push and the gate passes. The finding is resolved")
     rec.start(page, "03b-resolve")
@@ -364,6 +350,15 @@ def phase_pipeline(playwright) -> None:
     context.close()
     save_state(deliver_run=run_url)
 
+    context, page = foundry.open_portal(playwright, PROFILES)
+    foundry.open_agent(page)
+    foundry.show_details(page)
+    rec.say("In Microsoft Foundry, the version from the pipeline is now the active version")
+    rec.start(page, "05b-foundry")
+    rec.hold(6)
+    rec.stop()
+    context.close()
+
 
 def job_done(run_id: int, name: str) -> dict | None:
     jobs = gh_json(f"repos/{REPO}/actions/runs/{run_id}/jobs")["jobs"]
@@ -381,69 +376,89 @@ def open_job_step(page: Page, run_id: int, job_name: str, step_name: str) -> Non
 
 
 def phase_result(playwright) -> None:
-    browser, page = terminal_page(playwright)
-    env = {"FOUNDRY_PROJECT_ENDPOINT": sh(f"gh variable get FOUNDRY_PROJECT_ENDPOINT -R {REPO}")}
-    term = TerminalView(page, cwd=str(CLONE), env=env, title="foundry-delivery-demo")
+    sample = (Path(__file__).resolve().parent.parent / "samples/two-reports.txt").read_text()
     rec = Recorder(OUT)
-    rec.say("The new version answers: it now reports new and missing items", step="6  Result and rollback")
+    context, page = foundry.open_portal(playwright, PROFILES)
+    foundry.open_agent(page)
+    foundry.show_playground(page)
+    rec.say("The new version answers in the Foundry playground", step="6  Result and rollback")
     rec.start(page, "06a-answer")
-    term.run("cat samples/two-reports.txt")
-    rec.fast(8)
-    term.run(ASK, shown="python deploy/ask_agent.py samples/two-reports.txt")
+    rec.fast(6)
+    foundry.ask_in_playground(page, sample)
     rec.normal()
-    rec.hold(6)
+    rec.say("It now reports new and missing items. The log stream is the hosted container")
+    rec.hold(7)
     rec.stop()
+    context.close()
 
+    context, page = open_profile(playwright, "developer")
+    goto(page, f"https://github.com/{REPO}/actions/workflows/rollback.yml")
+    rec.say("A rollback is one pipeline run, started in GitHub")
+    rec.start(page, "06b-rollback")
+    rec.hold(2)
     started = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(time.time() - 5))
-    sh(f"gh workflow run rollback.yml -R {REPO} --ref main")
+    run_workflow_from_ui(page, "rollback.yml")
+    rec.hold(2)
+    rec.stop()
     run = wait_for("the rollback run", lambda: latest_run("rollback.yml", after=started), every_s=5)
-    context, bpage = open_profile(playwright, "developer")
     wait_for("the rollback job", lambda: job_done(run["id"], "rollback"), timeout_s=900)
-    open_job_step(bpage, run["id"], "rollback", "Route all traffic to the earlier version")
-    rec.say("Rollback is one pipeline run: all traffic goes back to the previous version")
-    rec.start(bpage, "06b-rollback")
-    smooth_scroll(bpage, 500)
+    goto(page, run["html_url"])
+    rec.say("The pipeline routes all traffic back to the version that served before")
+    rec.start(page, "06c-rollback-done")
+    scroll_to_text(page, "Rollback", offset=90)
     rec.hold(6)
     rec.stop()
     context.close()
 
-    term.clear()
-    rec.say("The previous version answers again. The new version stays available")
-    rec.start(page, "06c-after")
-    rec.fast(8)
-    term.run(ASK, shown="python deploy/ask_agent.py samples/two-reports.txt")
-    rec.normal()
+    context, page = foundry.open_portal(playwright, PROFILES)
+    foundry.open_agent(page)
+    foundry.show_details(page)
+    rec.say("Foundry shows the previous version as active. The new one stays available")
+    rec.start(page, "06d-foundry")
     rec.hold(6)
     rec.stop()
-    browser.close()
+    context.close()
+
+
+def run_workflow_from_ui(page: Page, workflow_file: str, branch: str = "main") -> None:
+    """Start a workflow with the Run workflow button on its Actions page."""
+    goto(page, f"https://github.com/{REPO}/actions/workflows/{workflow_file}")
+    page.get_by_role("button", name="Run workflow").first.click()
+    page.wait_for_timeout(1500)
+    dialog = page.get_by_role("dialog").last
+    if branch != "main":
+        dialog.locator("button", has_text="main").first.click()
+        page.wait_for_timeout(800)
+        page.get_by_placeholder("Find a branch...").fill(branch)
+        page.wait_for_timeout(800)
+        page.get_by_role("menuitemradio", name=branch).first.click()
+        page.wait_for_timeout(1000)
+    dialog.locator("button[type=submit]", has_text="Run workflow").click()
+    page.wait_for_timeout(4000)
 
 
 def phase_fallback(playwright) -> None:
-    prepare_devbox()
-    browser, page = terminal_page(playwright)
-    term = TerminalView(page, cwd=str(CLONE), title="foundry-delivery-demo")
+    context, page = open_profile(playwright, "developer")
     rec = Recorder(OUT)
     rec.say("What if a flaw got past the review? Run the pipeline on the flawed branch", step="Fallback")
+    goto(page, f"https://github.com/{REPO}/actions/workflows/deliver.yml")
     rec.start(page, "f1-start")
     started = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(time.time() - 5))
-    term.run(f"gh workflow run deliver.yml --ref {FEATURE_BRANCH}")
+    run_workflow_from_ui(page, "deliver.yml", FEATURE_BRANCH)
     rec.hold(3)
     rec.stop()
-    browser.close()
 
     run = wait_for("the fallback run", lambda: latest_run("deliver.yml", branch=FEATURE_BRANCH, after=started), every_s=5)
     wait_for("the fallback run to finish", lambda: gh_json(f"repos/{REPO}/actions/runs/{run['id']}")["status"] == "completed")
-    context, bpage = open_profile(playwright, "developer")
-    goto(bpage, run["html_url"])
-    rec.say("Unit tests pass. The evaluation fails, so nothing is deployed")
-    rec.start(bpage, "f2-run")
-    rec.hold(6)
-    rec.stop()
-    open_job_step(bpage, run["id"], "evaluation", "Run the evaluation set against the model")
+    goto(page, run["html_url"])
+    rec.say("The unit tests pass. The evaluation fails, so nothing is deployed")
+    rec.start(page, "f2-run")
+    rec.hold(5)
+    scroll_to_text(page, "Evaluation", offset=80)
     rec.say("Two boundary cases fail: detection accuracy is below its threshold")
-    rec.start(bpage, "f3-log")
-    smooth_scroll(bpage, 500)
-    rec.hold(9)
+    rec.hold(4)
+    smooth_scroll(page, 260)
+    rec.hold(5)
     rec.stop()
     context.close()
 
@@ -452,9 +467,10 @@ def phase_render(_playwright) -> None:
     title_card(OUT, "00-title", ["A delivery path for AI agents", "Claude Code · GitHub · Microsoft Foundry · synthetic data"], 4)
     title_card(OUT, "99-end", ["No change reaches production without", "Claude's code review, a named approver and a passing evaluation. Only the pipeline deploys."], 5)
     title_card(OUT, "f0-title", ["Fallback: a failing evaluation", "The same pipeline on the branch with the planted flaw"], 3)
-    main = ["00-title", "01-change", "02a-checks", "02b-finding", "03a-fix", "03b-resolve", "03c-approve", "03d-merge",
-            "04a-run", "04b-evaluation", "05-deploy", "06a-answer", "06b-rollback", "06c-after", "99-end"]
-    fallback = ["f0-title", "f1-start", "f2-run", "f3-log"]
+    main = ["00-title", "01-change", "02a-open", "02b-finding", "03a-fix", "03b-resolve", "03c-approve", "03d-merge",
+            "04a-run", "04b-evaluation", "05-deploy", "05b-foundry", "06a-answer", "06b-rollback", "06c-rollback-done",
+            "06d-foundry", "99-end"]
+    fallback = ["f0-title", "f1-start", "f2-run"]
     for name, clips in (("delivery-demo.mp4", main), ("delivery-demo-failing-evaluation.mp4", fallback)):
         present = [c for c in clips if (OUT / c / "clip.json").exists()]
         print(f"{name}: {render(OUT, present, OUT / name)}")

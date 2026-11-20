@@ -29,7 +29,7 @@ The agent is small on purpose. It compares two short CSV reports and lists the i
 3. **Approval.** The ruleset requires one approval from someone other than the last pusher. `CODEOWNERS` names the approver.
 4. **Merge and pipeline.** `Deliver agent` runs the unit tests and then the evaluation set against the model. A metric below its threshold fails the job, like a failed test.
 5. **Deploy.** The deploy job runs only for `main`, in the GitHub environment `production`. It signs in to Azure with a federated credential: no stored secret, no personal account. It creates a new version of the hosted agent, tests that version in its own session, and only then routes all traffic to it.
-6. **Rollback.** `Roll back agent` routes all traffic back to an earlier version.
+6. **Rollback.** `Roll back agent` routes all traffic back to the version that the current one replaced. Each deploy records that version on the new version.
 7. **Prompt agents.** A business owner edits a prompt agent in the dev project. `Promote prompt agent` exports the new dev version to a branch. The pull request goes through the same review and approval, and `Deliver prompt agents` creates the production version from the definition in Git.
 
 The merge gate is the ruleset in `infra/ruleset.json`:
@@ -129,51 +129,39 @@ The demo takes about 20 minutes live. A Claude review of this small change takes
 ### Before the call
 
 1. Run the reset at least 15 minutes before the call (see [Reset the demo](#reset-the-demo)).
-2. Check that `Deliver agent` on `main` is green and that production serves the starting code:
-   ```bash
-   python deploy/ask_agent.py samples/two-reports.txt
-   ```
-   The answer starts with `Deviations of 10% or more (agent version N)` and lists Travel and Training only, not Printing or Cloud hosting. Note the version number N.
+2. Check that `Deliver agent` on `main` is green. In the Foundry portal, open the production project, then **Agents → report-deviation-agent → Details**, and note the **Active version**.
 3. Open a terminal in the repository on the branch `feature/report-missing-items`.
 4. Open the repository in the browser as the developer, and in a second browser profile as the approver.
-5. Open the Foundry portal on the production project, on the agent `report-deviation-agent`.
+5. Open the Foundry portal on the agent's page. Do not show the portal's start page or project list: they show your account and other projects.
 6. Switch on Do Not Disturb and close everything that does not belong to the demo.
 
 ### Step 1: Change
 
-**Do:** show the change and run the local review.
+**Do:** run the local review in the terminal (or `/review-change` in Claude Code).
 
 ```bash
-git diff main --stat
 claude -p "/review-change"
 ```
 
-**Say:** "A developer used Claude Code to add a feature: the agent now also reports items that appear in only one of the two reports. Before the pull request, the developer runs the team's shared review skill. The same rules drive the review on the pull request. The local review is a practice, not a gate: nothing stops the developer from pushing anyway, and that is what happens here."
+**Say:** "A developer used Claude Code to add a feature: the agent now also reports items that appear in only one of the two reports. Before the pull request, the developer runs the team's shared review skill. The same rules drive the review on the pull request. The local review is a practice, not a gate: it even flags a problem here, but nothing stops the developer from pushing."
 
 ### Step 2: Pull request
 
-**Do:** push and open the pull request.
-
-```bash
-git push
-gh pr create --fill
-```
-
-Open the pull request in the browser. Show the checks: `unit-tests` passes, `Claude Code Review` runs, `review-gate` waits for it. When the review is done, show Claude's comment on `exceeds_threshold` and the blocked merge box.
+**Do:** in GitHub, open **Compare & pull request** for `feature/report-missing-items` and create the pull request. Show the checks: `unit-tests` passes, `Claude Code Review` runs, `review-gate` waits for it. When the review is done (3 to 5 minutes), show Claude's comment on `exceeds_threshold` and the blocked merge box.
 
 **Say:** "Claude Code Review reviews every push. It found a real defect: the comparison uses 'greater than', so a change of exactly the threshold is no longer reported. The unit tests did not catch it. The review gate turns the finding into a failed check, and the ruleset blocks the merge while the conversation is open. There is no bypass, not even for the repository owner."
 
 ### Step 3: Fix and approval
 
-**Do:** fix the comparison and add a boundary test, then push.
+**Do:** fix the comparison with Claude Code and push.
 
 ```bash
-claude -p "Fix the Important finding from the code review on this pull request and add a unit test for a change of exactly the threshold."
+claude -p "Fix the Important finding from the code review on this branch, and add a unit test for a change of exactly the threshold."
 python -m pytest -q
 git commit -am "Report a change of exactly the threshold" && git push
 ```
 
-When the new review passes, resolve the conversation. As the approver, approve the pull request.
+In GitHub, show the new commit in the pull request. When the new review passes, resolve the conversation. As the approver, open **Files changed → Submit review → Approve**.
 
 **Say:** "The developer fixes the defect. Claude reviews the new push and the gate passes. The approver named in CODEOWNERS approves. The approval must come after the last push, so nobody can slip a change in after the approval."
 
@@ -185,19 +173,15 @@ When the new review passes, resolve the conversation. As the approver, approve t
 
 ### Step 5: Deploy
 
-**Do:** open the `deploy` job log.
+**Do:** open the `deploy` job log. Then, in the Foundry portal, open the agent's **Details** tab.
 
-**Say:** "Only this job deploys, only from main, in the production environment. It signs in to Azure with a federated identity: there is no secret in GitHub and no personal account. It creates a new version of the hosted agent and tests it in its own session while production still serves the previous version. Only then does it switch all traffic. If the agent source has not changed, it deploys nothing."
+**Say:** "Only this job deploys, only from main, in the production environment. It signs in to Azure with a federated identity: there is no secret in GitHub and no personal account. It uploads the agent code as a new version of the hosted agent and tests it in its own session while production still serves the previous version. Only then does it switch all traffic. Foundry shows the new version as the active version."
 
 ### Step 6: Result and rollback
 
-**Do:** ask the agent, then run `Roll back agent` from the Actions tab, then ask again.
+**Do:** in the Foundry portal, open the **Playground** and paste `samples/two-reports.txt`. Then, in GitHub, open **Actions → Roll back agent → Run workflow**. When the run is done, show the agent's **Details** tab in Foundry again.
 
-```bash
-python deploy/ask_agent.py samples/two-reports.txt
-```
-
-**Say:** "The new version reports the new and the missing items. If something goes wrong in production, the rollback is one pipeline run: it routes all traffic back to the previous version. The new version stays available, so we can switch forward again."
+**Say:** "The new version reports the new and the missing items, and the log stream shows the hosted container at work. If something goes wrong in production, the rollback is one pipeline run: it routes all traffic back to the version that served before. The new version stays available, so we can switch forward again."
 
 ### Step 7 (optional): A business owner changes a prompt agent
 
@@ -208,6 +192,8 @@ python deploy/ask_agent.py samples/two-reports.txt
 ## Fallback: a failing evaluation
 
 To show that a failed evaluation stops the deploy, run `Deliver agent` on the branch with the planted flaw:
+
+In GitHub, open **Actions → Deliver agent → Run workflow**, choose the branch `feature/report-missing-items` and run it. Or:
 
 ```bash
 gh workflow run deliver.yml --ref feature/report-missing-items

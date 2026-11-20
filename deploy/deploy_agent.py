@@ -110,7 +110,11 @@ def main() -> int:
         code=("agent.zip", code, "application/zip"),
         code_zip_sha256=code_hash,
         description=f"Source commit {commit[:7]}",
-        metadata={"git_commit": commit, "pipeline_run": os.environ.get("PIPELINE_RUN_URL", "local")},
+        metadata={
+            "git_commit": commit,
+            "pipeline_run": os.environ.get("PIPELINE_RUN_URL", "local"),
+            "replaces_version": production or "",
+        },
     )
     candidate = created.version
     print(f"Created version {candidate}.", flush=True)
