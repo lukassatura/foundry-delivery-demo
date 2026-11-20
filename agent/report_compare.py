@@ -28,6 +28,7 @@ class Request:
 @dataclass(frozen=True)
 class Deviation:
     item: str
+    kind: str  # "changed", "new" or "removed"
     baseline: float
     current: float
     change_pct: float
@@ -94,16 +95,24 @@ def change_pct(baseline: float, current: float) -> float:
 
 
 def find_deviations(request: Request) -> list[Deviation]:
-    """Return the items in both reports whose amount changed by the threshold or more.
+    """Return the items whose amount changed by the threshold or more, and the items that are in only one report.
 
     The threshold is inclusive: a change of exactly the threshold is a deviation.
     """
     deviations = []
-    for item, base in request.baseline.items():
-        if item not in request.current:
-            continue
-        cur = request.current[item]
-        change = change_pct(base.amount, cur.amount)
-        if abs(change) >= request.threshold_pct:
-            deviations.append(Deviation(item, base.amount, cur.amount, change, cur.note))
-    return sorted(deviations, key=lambda d: -abs(d.change_pct))
+    for item in request.baseline.keys() | request.current.keys():
+        base = request.baseline.get(item)
+        cur = request.current.get(item)
+        if cur is None:
+            deviations.append(Deviation(item, "removed", base.amount, 0.0, -100.0, ""))
+        elif base is None:
+            deviations.append(Deviation(item, "new", 0.0, cur.amount, float("inf"), cur.note))
+        else:
+            change = change_pct(base.amount, cur.amount)
+            if exceeds_threshold(change, request.threshold_pct):
+                deviations.append(Deviation(item, "changed", base.amount, cur.amount, change, cur.note))
+    return sorted(deviations, key=lambda d: (-abs(d.change_pct), d.item))
+
+
+def exceeds_threshold(change: float, threshold_pct: float) -> bool:
+    return abs(change) > threshold_pct
