@@ -1,0 +1,36 @@
+name: Pull request checks
+
+on:
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  unit-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.13"
+      - run: pip install -r requirements-dev.txt
+      - run: python -m pytest -q
+
+  # Claude Code Review never fails its own check, so this job reads the review's
+  # severity counts and fails while an Important finding is open.
+  review-gate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    permissions:
+      checks: read
+      contents: read
+    steps:
+      - uses: actions/checkout@v7
+      - name: Wait for Claude Code Review and check its findings
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ github.repository }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: bash .github/scripts/review-gate.sh
