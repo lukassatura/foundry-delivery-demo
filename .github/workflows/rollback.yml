@@ -1,0 +1,38 @@
+name: Roll back agent
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version to serve. Leave empty for the version before the current one."
+        required: false
+        default: ""
+
+permissions:
+  contents: read
+
+jobs:
+  rollback:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    environment: production
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      FOUNDRY_PROJECT_ENDPOINT: ${{ vars.FOUNDRY_PROJECT_ENDPOINT }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.13"
+      - run: pip install -r agent/requirements.txt
+      - uses: azure/login@v3
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+      - name: Route all traffic to the earlier version
+        env:
+          TARGET_VERSION: ${{ inputs.version }}
+        run: python deploy/rollback_agent.py "$TARGET_VERSION"

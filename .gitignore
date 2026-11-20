@@ -1,0 +1,9 @@
+.venv/
+__pycache__/
+.pytest_cache/
+eval-results.json
+.env
+.env.*
+recording/out/
+*.zip
+infra/demo.env
