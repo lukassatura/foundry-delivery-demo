@@ -526,21 +526,11 @@ def phase_render(_playwright) -> None:
         print(f"{name}: {render(OUT, present, OUT / name, EDITS)}")
 
 
-# Cuts for the final take: drop page loads and long pauses at clip edges (start_s, end_s, speed).
+# Cuts for the final take: drop page loads at clip starts (start_s, end_s, speed).
 EDITS = {
-    "01-change": (0, 12.5, 1.0),
     "02a-open": (0, None, 1.6),
-    "02b-finding": (0, 14.5, 1.0),
-    "03a-fix": (0.5, 10.5, 1.0),
-    "03b-resolve": (0, 8.5, 1.0),
-    "03c-approve": (0, 8.0, 1.0),
-    "03b-gate": (2.5, 11.5, 1.0),
-    "05-deploy": (0, 15.0, 1.0),
-    "05b-foundry": (1.0, 8.5, 1.0),
-    "06a-answer": (0, 14.0, 1.0),
-    "06b-rollback": (1.0, 9.5, 1.0),
-    "06c-rollback-done": (1.0, 10.5, 1.0),
-    "06d-foundry": (1.0, 8.5, 1.0),
+    "03b-gate": (1.0, None, 1.0),
+    "06b-rollback": (1.0, None, 1.0),
 }
 
 PHASES = {

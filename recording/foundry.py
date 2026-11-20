@@ -50,6 +50,20 @@ def open_portal(playwright, profiles: Path):
 
 def hide_personal(page: Page) -> None:
     page.evaluate(HIDE_SCRIPT)
+    close_notices(page)
+
+
+def close_notices(page: Page) -> None:
+    """Close the portal's transient notices, such as an unavailable policy check, when they offer a close button."""
+    for notice in page.locator("[role=alert], [role=status], .fui-MessageBar").all():
+        try:
+            if "unavailable" in (notice.inner_text() or "").lower():
+                close = notice.get_by_role("button").last
+                if close.count():
+                    close.click()
+                    page.wait_for_timeout(500)
+        except Exception:
+            pass
 
 
 def open_agent(page: Page) -> None:

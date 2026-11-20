@@ -2,7 +2,9 @@
 and the change reaches production through review, approval, evaluation and the pipeline.
 
   python recording/record_prompt_demo.py build      # 1-3: create, try, adjust in the dev project
-  python recording/record_prompt_demo.py release    # 4: promotion, Claude's review, approval, merge
+  python recording/record_prompt_demo.py release    # 4: promotion, Claude's review, approval, answers, merge
+  python recording/record_prompt_demo.py review     # 4 again: Claude's suggestions on the open pull request
+  python recording/record_prompt_demo.py resolve    # 4 again: answer and resolve the suggestions, then merge
   python recording/record_prompt_demo.py production # 5: the pipeline, then the agent in production
   python recording/record_prompt_demo.py render
 
@@ -10,6 +12,7 @@ Each new recording needs a new agent name (PROMPT_AGENT_NAME), because Foundry k
 """
 
 import os
+import subprocess
 import sys
 import time
 from pathlib import Path
@@ -106,7 +109,7 @@ def phase_build(playwright) -> None:
     rec.fast(3)
     type_lines(page, INSTRUCTIONS_V1)
     rec.normal()
-    rec.say("Save makes version 1")
+    rec.say("Save creates a new version of the agent")
     rec.hold(1.5)
     save_version(page)
     rec.hold(3)
@@ -122,15 +125,15 @@ def phase_build(playwright) -> None:
     rec.say("They adjust the instructions: shorter, friendlier, one line per deviation", step="3  Adjust")
     rec.start(page, "p4-adjust")
     box.click()
-    page.keyboard.press("ControlOrMeta+End")
+    box.evaluate("e => { e.focus(); e.setSelectionRange(e.value.length, e.value.length); }")
     page.keyboard.press("Enter")
     rec.fast(3)
     type_lines(page, INSTRUCTIONS_V2)
     rec.normal()
-    rec.say("Save makes version 2. Every version stays in Foundry")
+    rec.say("Save creates another version. Every version stays in Foundry")
     save_version(page)
     rec.hold(3)
-    rec.say("Version 2: short, one line per deviation, ends with a question")
+    rec.say("The new version: short, one line per deviation, ends with a question")
     ask(page, rec, SAMPLE)
     rec.hold(7)
     rec.stop()
@@ -152,7 +155,7 @@ def phase_release(playwright) -> None:
     rec = Recorder(OUT)
     context, page = open_profile(playwright, "developer")
     goto(page, f"https://github.com/{REPO}/pull/{pr}/files")
-    rec.say("Behind the scenes: a platform engineer opens a pull request with version 2", step="4  Release")
+    rec.say("Behind the scenes: a platform engineer opens a pull request with the new version", step="4  Release")
     rec.start(page, "p5-pr")
     rec.hold(7)
     rec.stop()
@@ -161,12 +164,7 @@ def phase_release(playwright) -> None:
     review = wait_for("Claude Code Review", lambda: claude_check(head))
     wait_for("the review gate", lambda: (lambda g: g if g and g["completed_at"] >= review["completed_at"] else None)(job_check(head, "review-gate")), timeout_s=600)
     print("Claude:", review["output"]["title"])
-    goto(page, f"https://github.com/{REPO}/pull/{pr}")
-    rec.say("Claude reviews the instructions like code. The review gate passes")
-    rec.start(page, "p6-review")
-    show_merge_box(page)
-    rec.hold(6)
-    rec.stop()
+    record_review(page, rec, pr)
     context.close()
 
     approver, apage = open_profile(playwright, "approver")
@@ -185,9 +183,76 @@ def phase_release(playwright) -> None:
     rec.stop()
     approver.close()
 
-    wait_for("a mergeable pull request", lambda: gh_json(f"repos/{REPO}/pulls/{pr}").get("mergeable_state") == "clean", every_s=10, timeout_s=600)
+    phase_resolve(playwright)
+
+
+def record_review(page: Page, rec: Recorder, pr: int) -> None:
+    goto(page, f"https://github.com/{REPO}/pull/{pr}")
+    rec.say("Claude reviews the instructions like code and makes two suggestions", step="4  Release")
+    rec.start(page, "p6-review")
+    scroll_to_text(page, "(optional)", offset=200)
+    rec.hold(8)
+    rec.say("Nothing is Important, so the review gate passes")
+    show_merge_box(page)
+    rec.hold(4)
+    rec.stop()
+
+
+REPLIES = [
+    "Agreed. The business owner will add a rule for months without deviations in the next version.",
+    "Agreed. Checks for this agent's own rules, such as the word limit and the closing question, are a follow-up for the platform team.",
+]
+
+
+def phase_review(playwright) -> None:
+    """Record Claude's suggestions again for the pull request in the state file."""
+    rec = Recorder(OUT)
+    context, page = open_profile(playwright, "developer")
+    record_review(page, rec, load_state()["prompt_pr"])
+    context.close()
+
+
+def phase_resolve(playwright) -> None:
+    """The platform engineer answers each review comment, resolves it and merges."""
+    pr = load_state()["prompt_pr"]
+    all_comments = gh_json(f"repos/{REPO}/pulls/{pr}/comments")
+    comments = [c for c in all_comments if c["user"]["login"] == "claude[bot]" and not c.get("in_reply_to_id")]
+    answered = {c["in_reply_to_id"] for c in all_comments if c.get("in_reply_to_id") and c["user"]["login"] != "claude[bot]"}
+    for comment, reply in zip(comments, REPLIES * len(comments)):
+        if comment["id"] not in answered:
+            subprocess.run(["gh", "api", "-X", "POST", f"repos/{REPO}/pulls/{pr}/comments/{comment['id']}/replies",
+                            "-f", f"body={reply}", "--silent"], check=True)
+
+    rec = Recorder(OUT)
+    context, page = open_profile(playwright, "developer")
+    goto(page, f"https://github.com/{REPO}/pull/{pr}")
+    scroll_to_text(page, "(optional)", offset=200)
+    rec.say("The platform engineer answers both suggestions and resolves them", step="4  Release")
+    rec.start(page, "p7b-resolve")
+    rec.hold(3)
+    for _ in range(len(comments)):
+        button = page.get_by_role("button", name="Resolve conversation").first
+        if not button.count():
+            break
+        button.scroll_into_view_if_needed()
+        page.wait_for_timeout(800)
+        button.click()
+        page.wait_for_timeout(1500)
+    wait_for("a mergeable pull request", lambda: gh_json(f"repos/{REPO}/pulls/{pr}").get("mergeable_state") == "clean", every_s=5, timeout_s=300)
+    goto(page, f"https://github.com/{REPO}/pull/{pr}")
+    merge = page.get_by_role("button", name="Squash and merge", exact=True).last
+    merge.wait_for(state="visible", timeout=60000)
+    merge.scroll_into_view_if_needed()
+    page.evaluate("() => window.scrollBy(0, 160)")
+    rec.say("All gates pass. The change is merged")
+    rec.hold(2)
     save_state(prompt_merged_at=time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(time.time() - 5)))
-    sh(f"gh pr merge {pr} -R {REPO} --squash")
+    merge.click()
+    page.wait_for_timeout(1200)
+    page.get_by_role("button", name="Confirm squash and merge").first.click()
+    page.wait_for_timeout(3500)
+    rec.stop()
+    context.close()
 
 
 def phase_production(playwright) -> None:
@@ -227,12 +292,15 @@ def phase_render(_playwright) -> None:
     title_card(OUT, "p0-title", ["A business owner builds and changes an AI agent", "Microsoft Foundry · no code · the same gates as code · synthetic data"], 3.5)
     title_card(OUT, "p99-end", ["Business owners change prompts without code", "Every change still passes Claude's review, a named approver and an evaluation before production."], 4.5)
     clips = ["p0-title", "p1-create", "p2-instruct", "p3-try", "p4-adjust", "p5-pr", "p6-review", "p7-approve",
-             "p8-pipeline", "p9-prod", "p99-end"]
+             "p7b-resolve", "p8-pipeline", "p9-prod", "p99-end"]
     present = [c for c in clips if (OUT / c / "clip.json").exists()]
     print(render(OUT, present, OUT / "prompt-agent-demo.mp4"))
 
 
-PHASES = {"build": phase_build, "release": phase_release, "production": phase_production, "render": phase_render}
+PHASES = {
+    "build": phase_build, "release": phase_release, "review": phase_review, "resolve": phase_resolve,
+    "production": phase_production, "render": phase_render,
+}
 
 if __name__ == "__main__":
     with sync_playwright() as pw:

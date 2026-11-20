@@ -186,10 +186,12 @@ def render_clip(out_dir: Path, name: str) -> Path:
         shots.append((t, speed, cache[key]))
 
     lines = []
+    total = 0.0
     for (t, speed, path), nxt in zip(shots, shots[1:] + [(data["end"], 1.0, None)]):
         duration = max((nxt[0] - t) / speed, 0)
         if duration > 0:
             lines.append(f"file '{path.resolve()}'\nduration {duration:.4f}\n")
+            total += duration
     # The concat demuxer needs the last file twice; give the repeat one frame, not a full extra duration.
     lines.append(f"file '{shots[-1][2].resolve()}'\nduration {1 / FPS:.4f}\n")
     listing = work / "frames.txt"
@@ -198,7 +200,7 @@ def render_clip(out_dir: Path, name: str) -> Path:
     subprocess.run(
         ["ffmpeg", "-y", "-loglevel", "error", "-f", "concat", "-safe", "0", "-i", str(listing),
          "-vf", f"fps={FPS},format=yuv420p", "-c:v", "libx264", "-preset", "medium", "-crf", "18",
-         "-r", str(FPS), str(output)],
+         "-r", str(FPS), "-t", f"{total:.3f}", str(output)],
         check=True,
     )
     return output
