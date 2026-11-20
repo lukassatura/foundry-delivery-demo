@@ -1,0 +1,5 @@
+Deviations of 10% or more:
+- Cloud hosting: new in the current report (2,400). Test environment moved to a cloud provider.
+- Printing: missing from the current report (was 300). No explanation given in the report.
+- Travel: 1,000 -> 1,250 (+25.0%). Two customer workshops moved from the first quarter.
+- Training: 2,000 -> 2,200 (+10.0%). New onboarding course for the support team.

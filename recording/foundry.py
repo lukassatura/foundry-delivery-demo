@@ -80,8 +80,8 @@ def show_playground(page: Page) -> None:
     hide_personal(page)
 
 
-def ask_in_playground(page: Page, text: str, timeout_s: int = 150) -> str:
-    """Type a multi-line message, send it and wait until the answer is complete."""
+def ask_in_playground(page: Page, text: str, timeout_s: int = 180) -> str:
+    """Type a multi-line message, send it, and wait until the answer has stopped changing."""
     box = page.locator("[aria-label='Message the agent...'][contenteditable=true]").first
     box.click()
     lines = text.strip().splitlines()
@@ -91,11 +91,27 @@ def ask_in_playground(page: Page, text: str, timeout_s: int = 150) -> str:
             page.keyboard.press("Shift+Enter")
         page.wait_for_timeout(120)
     page.wait_for_timeout(600)
+    before = page.evaluate("() => document.body.innerText")
     page.get_by_role("button", name="Send").first.click()
-    for _ in range(timeout_s // 3):
-        page.wait_for_timeout(3000)
+    last, stable = before, 0
+    for _ in range(timeout_s // 2):
+        page.wait_for_timeout(2000)
         body = page.evaluate("() => document.body.innerText")
-        if "Summary:" in body:
-            page.wait_for_timeout(1500)
-            return body
-    return page.evaluate("() => document.body.innerText")
+        changed_since_send = len(body) > len(before) + 40
+        stable = stable + 1 if body == last and changed_since_send else 0
+        last = body
+        if stable >= 3:
+            break
+    page.wait_for_timeout(1000)
+    return last
+
+
+def select_model(page: Page, model: str = "gpt-5.4-mini") -> None:
+    """Pick the model deployment when a new agent has none selected yet."""
+    picker = page.get_by_role("combobox", name="Model:").first
+    if model in (picker.inner_text() or ""):
+        return
+    picker.click()
+    page.wait_for_timeout(1200)
+    page.get_by_role("option", name=model).first.click()
+    page.wait_for_timeout(1500)

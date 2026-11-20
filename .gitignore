@@ -8,3 +8,4 @@ recording/out/
 *.zip
 infra/demo.env
 deliverables/
+recording/out-prompt/

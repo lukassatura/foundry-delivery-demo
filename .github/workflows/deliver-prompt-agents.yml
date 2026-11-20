@@ -1,6 +1,7 @@
 name: Deliver prompt agents
 
-# Creates a production version of each prompt agent whose definition changed on main.
+# For each prompt agent whose definition changed on main: evaluate the definition against the
+# model, then create its production version. A failed evaluation stops the deploy.
 on:
   push:
     branches: [main]
@@ -14,20 +15,68 @@ concurrency:
 permissions:
   contents: read
 
+env:
+  FOUNDRY_PROJECT_ENDPOINT: ${{ vars.FOUNDRY_PROJECT_ENDPOINT }}
+
 jobs:
+  changes:
+    runs-on: ubuntu-latest
+    outputs:
+      agents: ${{ steps.list.outputs.agents }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 2
+      - id: list
+        env:
+          EVENT: ${{ github.event_name }}
+        run: |
+          if [[ "$EVENT" == "push" ]]; then
+            files=$(git diff --name-only --diff-filter=AM HEAD~1 HEAD -- 'prompt-agents/*.json')
+          else
+            files=$(ls prompt-agents/*.json)
+          fi
+          agents=$(for f in $files; do basename "$f" .json; done | xargs)
+          echo "agents=$agents" >> "$GITHUB_OUTPUT"
+          echo "Prompt agents to deliver: ${agents:-none}"
+
+  evaluation:
+    needs: changes
+    if: needs.changes.outputs.agents != ''
+    runs-on: ubuntu-latest
+    environment: evaluation
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.13"
+      - run: pip install -r agent/requirements.txt
+      - uses: azure/login@v3
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+      - name: Evaluate the prompt agents against the model
+        env:
+          AGENTS: ${{ needs.changes.outputs.agents }}
+        run: |
+          status=0
+          for agent in $AGENTS; do python evals/run_prompt_eval.py "$agent" || status=1; done
+          exit $status
+
   deploy:
-    if: github.ref == 'refs/heads/main'
+    needs: [changes, evaluation]
+    if: github.ref == 'refs/heads/main' && needs.changes.outputs.agents != ''
     runs-on: ubuntu-latest
     environment: production
     permissions:
       contents: read
       id-token: write
-    env:
-      FOUNDRY_PROJECT_ENDPOINT: ${{ vars.FOUNDRY_PROJECT_ENDPOINT }}
     steps:
       - uses: actions/checkout@v7
-        with:
-          fetch-depth: 2
       - uses: actions/setup-python@v7
         with:
           python-version: "3.13"
@@ -39,13 +88,5 @@ jobs:
           subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
       - name: Create production versions
         env:
-          EVENT: ${{ github.event_name }}
-        run: |
-          if [[ "$EVENT" == "push" ]]; then
-            changed=$(git diff --name-only HEAD~1 HEAD -- prompt-agents/)
-          else
-            changed=$(ls prompt-agents/*.json)
-          fi
-          for file in $changed; do
-            [[ -f "$file" ]] && python deploy/prompt_agent.py deploy "$(basename "$file" .json)"
-          done
+          AGENTS: ${{ needs.changes.outputs.agents }}
+        run: for agent in $AGENTS; do python deploy/prompt_agent.py deploy "$agent"; done
