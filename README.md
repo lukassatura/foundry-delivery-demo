@@ -207,7 +207,7 @@ The unit tests pass, the evaluation fails on the two boundary cases, and the dep
 ./demo/reset.sh
 ```
 
-The script closes the open demo pull requests, lifts the ruleset for a moment, moves `main` back to `demo-start` and the feature branch back to `demo-feature`, and turns the ruleset on again. The push to `main` starts `Deliver agent`, which routes production back to the code of `demo-start`. The script also gives the dev prompt agent a new version with the instructions from `main`. Foundry keeps the older versions; the demo does not need them deleted.
+The script closes the open demo pull requests, lifts the ruleset for a moment, moves `main` back to `demo-start` and the feature branch back to `demo-feature`, and turns the ruleset on again. Then it starts `Deliver agent` on `main`, which routes production back to the code of `demo-start`. The script also gives the dev prompt agent a new version with the instructions from `main`. Foundry keeps the older versions; the demo does not need them deleted.
 
 ## Delete everything
 

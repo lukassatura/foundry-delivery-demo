@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Put the demo back to its starting state. Run it as the repository owner, outside the demo,
 # with az signed in to the demo subscription.
-#  - main returns to the tag demo-start, and the pipeline deploys that code again;
+#  - main returns to the tag demo-start, and the pipeline runs on it, so production serves that code;
 #  - the feature branch returns to the tag demo-feature, the commit with the planted flaw;
 #  - open pull requests from demo branches are closed;
 #  - the prompt agent in the dev project gets a new version with the instructions from main.
@@ -38,4 +38,7 @@ v = project.agents.create_version(agent_name=d["name"], definition=PromptAgentDe
 print(f"Dev prompt agent reset to the instructions in main (dev version {v.version}).")
 PY
 
-echo "The push to main started 'Deliver agent'. It routes production back to the code of demo-start."
+# GitHub does not start a workflow for a forced push, so start the pipeline explicitly. It deploys
+# the code of demo-start, or nothing when production already runs it.
+gh workflow run deliver.yml -R "$repo" --ref main
+echo "Started 'Deliver agent' on main. It routes production back to the code of demo-start."
