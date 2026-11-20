@@ -4,6 +4,7 @@
   python recording/record_demo.py review      # 2: Claude Code Review blocks the merge
   python recording/record_demo.py fix         # 3: the fix, the passing gate and the approval, then the merge
   python recording/record_demo.py approve     # 3 again from the passing gate, when the fix is already pushed
+  python recording/record_demo.py merge       # 4: the merge, when the pull request is approved
   python recording/record_demo.py pipeline    # 4 and 5: tests, evaluation and deploy
   python recording/record_demo.py result      # 6: the new version answers in Foundry, then the rollback
   python recording/record_demo.py fallback    # a failing evaluation on the branch with the planted flaw
@@ -252,6 +253,9 @@ def phase_fix(playwright) -> None:
     print(sh(f'claude -p "{prompt}" {FIX_TOOLS}', cwd=CLONE)[-600:])
     print(sh(".venv/bin/python -m pytest -q", cwd=CLONE).splitlines()[-1])
     sh('git commit -qam "Report a change of exactly the threshold" && git push -q origin HEAD', cwd=CLONE)
+    head = sh("git rev-parse HEAD", cwd=CLONE)
+    pr = load_state()["pr_number"]
+    wait_for("GitHub to see the fix", lambda: gh_json(f"repos/{REPO}/pulls/{pr}")["head"]["sha"] == head, every_s=5)
     phase_approve(playwright)
 
 
@@ -260,21 +264,12 @@ def phase_approve(playwright) -> None:
     rec = Recorder(OUT)
     rec.step = "3  Fix and approval"
     head = gh_json(f"repos/{REPO}/pulls/{pr}")["head"]["sha"]
-    wait_for("the new Claude Code Review", lambda: claude_check(head))
-    gate = wait_for("the review gate", lambda: job_check(head, "review-gate"), timeout_s=600)
-    print(f"review-gate: {gate['conclusion']}")
+    record_fix_commit(playwright, rec, head)
+    record_gate(playwright, rec, head)
 
     context, page = open_profile(playwright, "developer")
-    goto(page, f"https://github.com/{REPO}/pull/{pr}/commits/{head}")
-    rec.say("The developer fixes it with Claude Code: >= instead of >, and a boundary test")
-    rec.start(page, "03a-fix")
-    rec.hold(4)
-    smooth_scroll(page, 450)
-    rec.hold(4)
-    rec.stop()
-
     goto(page, f"https://github.com/{REPO}/pull/{pr}")
-    rec.say("Claude reviews the new push and the gate passes. The finding is resolved")
+    rec.say("The developer resolves the finding in the pull request")
     rec.start(page, "03b-resolve")
     scroll_to_text(page, "(Important)", offset=200)
     rec.hold(2)
@@ -304,15 +299,70 @@ def phase_approve(playwright) -> None:
     rec.stop()
     approver.close()
 
+    context.close()
+    phase_merge(playwright)
+
+
+def record_fix_commit(playwright, rec: Recorder, head: str) -> None:
+    context, page = open_profile(playwright, "developer")
+    goto(page, f"https://github.com/{REPO}/commit/{head}")
+    rec.say("The developer fixes it with Claude Code: >= instead of >, and a boundary test", step="3  Fix and approval")
+    rec.start(page, "03a-fix")
+    rec.hold(4)
+    smooth_scroll(page, 450)
+    rec.hold(4)
+    rec.stop()
+    context.close()
+
+
+def record_gate(playwright, rec: Recorder, head: str) -> None:
+    """Wait for the review of the fix and for the gate that read it, then show the gate's log."""
+    review = wait_for("the new Claude Code Review", lambda: claude_check(head))
+    gate = wait_for(
+        "the review gate after the review",
+        lambda: (lambda g: g if g and g["completed_at"] >= review["completed_at"] else None)(job_check(head, "review-gate")),
+        timeout_s=600,
+    )
+    print(f"review-gate: {gate['conclusion']}")
+    context, page = open_profile(playwright, "developer")
+    goto(page, gate["html_url"])
+    page.get_by_text("Wait for Claude Code Review and check its findings").first.click()
+    page.wait_for_timeout(2500)
+    rec.say("Claude reviews the new push and finds no issues. The review gate passes", step="3  Fix and approval")
+    rec.start(page, "03b-gate")
+    scroll_to_text(page, "No Important findings", offset=320)
+    rec.hold(6)
+    rec.stop()
+    context.close()
+
+
+def phase_fixshots(playwright) -> None:
+    """Record the fix commit and the passing gate again for the pull request in the state file."""
+    pr = load_state()["pr_number"]
+    head = gh_json(f"repos/{REPO}/pulls/{pr}/commits")[-1]["sha"]
+    rec = Recorder(OUT)
+    record_fix_commit(playwright, rec, head)
+    record_gate(playwright, rec, head)
+
+
+def phase_merge(playwright) -> None:
+    pr = load_state()["pr_number"]
+    wait_for("a mergeable pull request", lambda: gh_json(f"repos/{REPO}/pulls/{pr}").get("mergeable_state") == "clean", every_s=10, timeout_s=600)
+    context, page = open_profile(playwright, "developer")
     goto(page, f"https://github.com/{REPO}/pull/{pr}")
+    merge = page.get_by_role("button", name="Squash and merge", exact=True).last
+    merge.wait_for(state="visible", timeout=60000)
+    merge.scroll_into_view_if_needed()
+    page.evaluate("() => window.scrollBy(0, 160)")
+    page.wait_for_timeout(1500)
+    rec = Recorder(OUT)
     rec.say("All gates pass. The developer merges", step="4  Merge and pipeline")
     rec.start(page, "03d-merge")
-    scroll_to_text(page, "Squash and merge", offset=400)
     rec.hold(2)
-    page.get_by_role("button", name="Squash and merge").first.click()
-    page.wait_for_timeout(1000)
+    merge.click()
+    page.wait_for_timeout(1200)
     page.get_by_role("button", name="Confirm squash and merge").first.click()
-    page.wait_for_timeout(3000)
+    page.wait_for_timeout(3500)
     rec.stop()
     context.close()
     save_state(merged_at=time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(time.time() - 120)))
@@ -464,20 +514,38 @@ def phase_fallback(playwright) -> None:
 
 
 def phase_render(_playwright) -> None:
-    title_card(OUT, "00-title", ["A delivery path for AI agents", "Claude Code · GitHub · Microsoft Foundry · synthetic data"], 4)
-    title_card(OUT, "99-end", ["No change reaches production without", "Claude's code review, a named approver and a passing evaluation. Only the pipeline deploys."], 5)
+    title_card(OUT, "00-title", ["A delivery path for AI agents", "Claude Code · GitHub · Microsoft Foundry · synthetic data"], 3.5)
+    title_card(OUT, "99-end", ["No change reaches production without", "Claude's code review, a named approver and a passing evaluation. Only the pipeline deploys."], 4.5)
     title_card(OUT, "f0-title", ["Fallback: a failing evaluation", "The same pipeline on the branch with the planted flaw"], 3)
-    main = ["00-title", "01-change", "02a-open", "02b-finding", "03a-fix", "03b-resolve", "03c-approve", "03d-merge",
+    main = ["00-title", "01-change", "02a-open", "02b-finding", "03a-fix", "03b-resolve", "03c-approve", "03b-gate", "03d-merge",
             "04a-run", "04b-evaluation", "05-deploy", "05b-foundry", "06a-answer", "06b-rollback", "06c-rollback-done",
             "06d-foundry", "99-end"]
     fallback = ["f0-title", "f1-start", "f2-run"]
     for name, clips in (("delivery-demo.mp4", main), ("delivery-demo-failing-evaluation.mp4", fallback)):
         present = [c for c in clips if (OUT / c / "clip.json").exists()]
-        print(f"{name}: {render(OUT, present, OUT / name)}")
+        print(f"{name}: {render(OUT, present, OUT / name, EDITS)}")
 
+
+# Cuts for the final take: drop page loads and long pauses at clip edges (start_s, end_s, speed).
+EDITS = {
+    "01-change": (0, 12.5, 1.0),
+    "02a-open": (0, None, 1.6),
+    "02b-finding": (0, 14.5, 1.0),
+    "03a-fix": (0.5, 10.5, 1.0),
+    "03b-resolve": (0, 8.5, 1.0),
+    "03c-approve": (0, 8.0, 1.0),
+    "03b-gate": (2.5, 11.5, 1.0),
+    "05-deploy": (0, 15.0, 1.0),
+    "05b-foundry": (1.0, 8.5, 1.0),
+    "06a-answer": (0, 14.0, 1.0),
+    "06b-rollback": (1.0, 9.5, 1.0),
+    "06c-rollback-done": (1.0, 10.5, 1.0),
+    "06d-foundry": (1.0, 8.5, 1.0),
+}
 
 PHASES = {
-    "change": phase_change, "review": phase_review, "fix": phase_fix, "approve": phase_approve, "pipeline": phase_pipeline,
+    "change": phase_change, "review": phase_review, "fix": phase_fix, "approve": phase_approve, "merge": phase_merge, "fixshots": phase_fixshots,
+    "pipeline": phase_pipeline,
     "result": phase_result, "fallback": phase_fallback, "render": phase_render,
 }
 

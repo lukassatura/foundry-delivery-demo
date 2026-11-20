@@ -20,7 +20,7 @@ The agent is small on purpose. It compares two short CSV reports and lists the i
 | `infra/` | Set-up and teardown scripts for Azure and GitHub, and the branch ruleset. |
 | `demo/` | The reset script. |
 | `samples/` | An input that shows the difference between the starting version and the new version. |
-| `recording/` | The scripts that record the demo video. |
+| `recording/` | The scripts that run the demo for real and record it as a captioned video. See `recording/README.md`. |
 
 ## How the path works
 
@@ -124,7 +124,7 @@ git push -f origin demo-start demo-feature
 
 ## The demo
 
-The demo takes about 20 minutes live. A Claude review of this small change takes 3 to 5 minutes, and the pipeline about 5 minutes. Use the waiting time for questions. The recording is the backup.
+The demo takes about 20 minutes live. A Claude review of this small change takes 2 to 5 minutes, and the pipeline about 4 minutes. Use the waiting time for questions. The recording is the backup.
 
 ### Before the call
 

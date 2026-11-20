@@ -126,14 +126,32 @@ class Recorder:
 # Rendering -------------------------------------------------------------------------------
 
 
-def render(out_dir: Path, clip_names: list[str], output: Path) -> Path:
-    """Composite the clips with their captions and encode one MP4."""
+def render(out_dir: Path, clip_names: list[str], output: Path, edits: dict | None = None) -> Path:
+    """Composite the clips with their captions and encode one MP4.
+
+    edits maps a clip name to (start_s, end_s, speed): keep only that part of the clip,
+    played at that speed. End None keeps the clip to its end.
+    """
     parts = [render_clip(out_dir, name) for name in clip_names]
+    parts = [cut(part, *(edits or {}).get(name, (0, None, 1.0))) for part, name in zip(parts, clip_names)]
     listing = out_dir / "clips.txt"
     listing.write_text("".join(f"file '{p.resolve()}'\n" for p in parts))
     subprocess.run(
         ["ffmpeg", "-y", "-loglevel", "error", "-f", "concat", "-safe", "0", "-i", str(listing),
          "-c", "copy", "-movflags", "+faststart", str(output)],
+        check=True,
+    )
+    return output
+
+
+def cut(path: Path, start: float, end: float | None, speed: float) -> Path:
+    if start == 0 and end is None and speed == 1.0:
+        return path
+    output = path.with_suffix(".cut.mp4")
+    window = ["-ss", str(start)] + (["-to", str(end)] if end is not None else [])
+    subprocess.run(
+        ["ffmpeg", "-y", "-loglevel", "error", *window, "-i", str(path), "-vf", f"setpts=PTS/{speed},fps={FPS}",
+         "-c:v", "libx264", "-preset", "medium", "-crf", "18", "-an", str(output)],
         check=True,
     )
     return output
