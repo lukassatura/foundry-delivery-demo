@@ -1,0 +1,51 @@
+name: Deliver prompt agents
+
+# Creates a production version of each prompt agent whose definition changed on main.
+on:
+  push:
+    branches: [main]
+    paths: ["prompt-agents/**"]
+  workflow_dispatch:
+
+concurrency:
+  group: deliver-prompt-agents
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    environment: production
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      FOUNDRY_PROJECT_ENDPOINT: ${{ vars.FOUNDRY_PROJECT_ENDPOINT }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 2
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.13"
+      - run: pip install -r agent/requirements.txt
+      - uses: azure/login@v3
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+      - name: Create production versions
+        env:
+          EVENT: ${{ github.event_name }}
+        run: |
+          if [[ "$EVENT" == "push" ]]; then
+            changed=$(git diff --name-only HEAD~1 HEAD -- prompt-agents/)
+          else
+            changed=$(ls prompt-agents/*.json)
+          fi
+          for file in $changed; do
+            [[ -f "$file" ]] && python deploy/prompt_agent.py deploy "$(basename "$file" .json)"
+          done

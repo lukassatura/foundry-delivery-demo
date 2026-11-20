@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
-# Wait for the "Claude Code Review" check run on the pull request head and fail when it reports
-# an Important finding. The review writes its counts on the last line of the check run text:
+# Wait for the "Claude Code Review" check run that the Claude GitHub App posts on the pull request
+# head, and fail when it reports an Important finding. The review writes its counts on the last
+# line of the check run text:
 #   <!-- bughunter-severity: {"nit":1,"normal":2,"pre_existing":0} -->
 # "normal" is the number of Important findings.
 set -euo pipefail
@@ -11,7 +12,7 @@ deadline=$((SECONDS + ${REVIEW_GATE_TIMEOUT_S:-2400}))
 while true; do
   run=$(gh api "repos/${REPOSITORY}/commits/${HEAD_SHA}/check-runs" \
     -f check_name="${check_name}" -X GET \
-    --jq '[.check_runs[] | select(.status == "completed")] | sort_by(.completed_at) | last // empty')
+    --jq '[.check_runs[] | select(.status == "completed" and .app.slug == "claude")] | sort_by(.completed_at) | last // empty')
   if [[ -n "${run}" ]]; then
     break
   fi

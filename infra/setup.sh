@@ -33,7 +33,7 @@ if ! az cognitiveservices account deployment show -n "$ACCOUNT_NAME" -g "$RESOUR
     --model-format OpenAI --sku-name GlobalStandard --sku-capacity "$MODEL_CAPACITY" -o none
 fi
 
-echo "== Pipeline identity with federated credentials for two GitHub environments"
+echo "== Pipeline identity with federated credentials for three GitHub environments"
 if ! az identity show -n "$IDENTITY_NAME" -g "$RESOURCE_GROUP" -o none 2>/dev/null; then
   az identity create -n "$IDENTITY_NAME" -g "$RESOURCE_GROUP" -l "$LOCATION" --tags "$TAG" -o none
 fi
@@ -44,7 +44,7 @@ principal_id=$(az identity show -n "$IDENTITY_NAME" -g "$RESOURCE_GROUP" --query
 owner_id=$(gh api "repos/$GITHUB_REPO" --jq .owner.id)
 repo_id=$(gh api "repos/$GITHUB_REPO" --jq .id)
 subject_prefix="repo:${GITHUB_REPO%%/*}@${owner_id}/${GITHUB_REPO##*/}@${repo_id}"
-for environment in evaluation production; do
+for environment in development evaluation production; do
   az identity federated-credential create -n "github-$environment" --identity-name "$IDENTITY_NAME" -g "$RESOURCE_GROUP" \
     --issuer https://token.actions.githubusercontent.com --subject "$subject_prefix:environment:$environment" \
     --audiences api://AzureADTokenExchange -o none
@@ -85,6 +85,7 @@ az rest --method PUT \
     }}')" -o none
 
 echo "== GitHub environments, secrets and variables"
+gh api -X PUT "repos/$GITHUB_REPO/environments/development" --silent
 gh api -X PUT "repos/$GITHUB_REPO/environments/evaluation" --silent
 gh api -X PUT "repos/$GITHUB_REPO/environments/production" --input - --silent <<'JSON'
 {"deployment_branch_policy": {"protected_branches": false, "custom_branch_policies": true}}
