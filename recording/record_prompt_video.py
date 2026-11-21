@@ -214,6 +214,42 @@ def phase_production(playwright) -> None:
     context.close()
 
 
+# The edit, about three minutes: (start_s, end_s, speed) windows of each clip. Typing the instructions
+# stays at full speed; repeated test inputs, page loads and waits play faster, and the caption bar
+# shows the speed whenever it is above 1.
+EDIT_LIST = [(OUT, "v1-create"), (OLD, "p5-pr"), (OLD, "p6-review"), (OLD, "p7-approve"), (OLD, "p7b-resolve"),
+             (OUT, "v6-pipeline"), (OUT, "v7-production")]
+CUTS = {
+    "v1-create": [
+        (1.0, 13.2, 1.0),     # New agent, Build an agent, name, create
+        (13.2, 25.8, 2.0),    # Foundry creates the agent
+        (25.8, 35.4, 1.5),    # pick the model
+        (35.4, 61.7, 1.0),    # type the instructions, Save
+        (61.7, 80.0, 2.0),    # type the first test input
+        (80.0, 82.7, 1.0),    # Send
+        (82.7, 92.8, 2.0),    # wait for the answer
+        (92.8, 98.3, 1.0),    # the long, formal answer
+        (99.6, 124.4, 1.0),   # add three rules, Save, New chat
+        (124.4, 139.4, 4.0),  # type the same test input again
+        (139.4, 142.1, 1.0),  # Send
+        (142.1, 154.2, 2.0),  # wait for the answer
+        (154.2, 159.6, 1.0),  # the short answer
+    ],
+    "p5-pr": [(0.0, 5.5, 1.0)],
+    "p6-review": [(0.0, 7.5, 1.0), (9.5, None, 1.0)],
+    "p7b-resolve": [(0.0, 5.3, 1.0), (12.0, None, 1.0)],
+    "v6-pipeline": [(2.0, None, 1.0)],
+    "v7-production": [
+        (0.0, 4.0, 1.0),      # the agent list
+        (4.0, 12.7, 2.0),     # open the agent
+        (12.7, 29.0, 3.0),    # type the test input
+        (29.0, 30.6, 1.0),    # Send
+        (30.6, 38.7, 2.0),    # wait for the answer
+        (38.7, 44.5, 1.0),    # the answer in production
+    ],
+}
+
+
 def phase_render(_playwright) -> None:
     intro = brand.title_card(
         "Demo · Microsoft Foundry · prompt agents",
@@ -228,18 +264,10 @@ def phase_render(_playwright) -> None:
          "An evaluation tests it before production"],
         "Only the pipeline creates the production version.",
     )
-    parts = [
-        ("card", intro, 4.5),
-        ("clip", OUT / "v1-create"),
-        ("clip", OLD / "p5-pr"),
-        ("clip", OLD / "p6-review"),
-        ("clip", OLD / "p7-approve"),
-        ("clip", OLD / "p7b-resolve", (0.0, 5.3, 1.0)),
-        ("clip", OLD / "p7b-resolve", (12.0, None, 1.0)),
-        ("clip", OUT / "v6-pipeline"),
-        ("clip", OUT / "v7-production"),
-        ("card", outro, 5.5),
-    ]
+    parts = [("card", intro, 3.5)]
+    for folder, name in EDIT_LIST:
+        parts += [("clip", folder / name, cut) for cut in CUTS.get(name, [(0.0, None, 1.0)])]
+    parts.append(("card", outro, 4.5))
     studio.render_video(OUT / "prompt-agent-demo.mp4", parts, annotations_dir=HERE / "annotations")
 
 
