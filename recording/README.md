@@ -50,3 +50,25 @@ done
 ```
 
 `build` records the portal part in the dev project. `release` starts `Promote prompt agent` and opens the pull request as the platform engineer, records Claude's review and the approval, then answers and resolves Claude's comments and merges. `production` records the pipeline and the agent in the production project. The output is `recording/out-prompt/prompt-agent-demo.mp4`. A take uses one Claude Code Review run. Foundry keeps the agents, so every take needs a new agent name.
+
+## Styled videos
+
+`record_main_video.py` and `record_prompt_video.py` make the BigHub-styled versions of the two videos. They add an artificial cursor with click ripples, a camera that zooms on what is clicked, typed or read, a ring around a field being typed in, intro and outro cards, and a caption bar that says what happens in the frame.
+
+- `actions.py` performs each click and each typing step for real and logs where it happens. The browser renders a 1280 x 640 layout at device scale 2, so zoomed shots stay sharp.
+- `studio.py` renders every frame from the recorded frames and the logged events, and streams them into the encoder.
+- `brand.py` draws the cards, the caption bar and the cursor in HTML after the BigHub design system. It reads the brand font and logos from `BRAND_DIR` (default: the `brand` folder of the BigHub client page template). The font is commercial, so it never goes into this repository.
+- `annotations/` adds the cursor and the camera to clips recorded without them, for example the pull request footage. Times are seconds from the clip start; coordinates are pixels of the clip's frames.
+
+The styled videos reuse the pull request footage of `record_demo.py` and `record_prompt_demo.py`, so making them again opens no pull request and starts no Claude Code Review:
+
+```bash
+~/.cache/foundry-demo-recorder/bin/python recording/record_main_video.py foundry    # production must serve the version that PR #2 deployed
+~/.cache/foundry-demo-recorder/bin/python recording/record_main_video.py rollback
+~/.cache/foundry-demo-recorder/bin/python recording/record_main_video.py render
+~/.cache/foundry-demo-recorder/bin/python recording/record_prompt_video.py foundry  # the dev agent must not exist yet
+~/.cache/foundry-demo-recorder/bin/python recording/record_prompt_video.py pipeline
+~/.cache/foundry-demo-recorder/bin/python recording/record_prompt_video.py production
+~/.cache/foundry-demo-recorder/bin/python recording/record_prompt_video.py render
+```
+

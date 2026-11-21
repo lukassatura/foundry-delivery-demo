@@ -30,12 +30,19 @@ HIDE_SCRIPT = """() => {
 }"""
 
 
-def open_portal(playwright, profiles: Path):
-    """Start the developer profile in English and sign in silently with the saved Microsoft session."""
-    context = playwright.chromium.launch_persistent_context(
-        profiles / "developer", channel="chromium", headless=True, viewport=VIEWPORT,
-        device_scale_factor=SCALE, locale="en-US", color_scheme="light",
-    )
+def open_portal(playwright, profiles: Path, zoomed: bool = False):
+    """Start the developer profile in English and sign in silently with the saved Microsoft session.
+
+    zoomed records at device scale 2 (see actions.py).
+    """
+    if zoomed:
+        import actions
+        context = actions.launch_profile(playwright, profiles / "developer", locale="en-US")
+    else:
+        context = playwright.chromium.launch_persistent_context(
+            profiles / "developer", channel="chromium", headless=True, viewport=VIEWPORT,
+            device_scale_factor=SCALE, locale="en-US", color_scheme="light",
+        )
     page = context.pages[0] if context.pages else context.new_page()
     page.goto(PORTAL, wait_until="load")
     page.wait_for_timeout(4000)

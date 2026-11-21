@@ -35,6 +35,8 @@ class Clip:
     frames: list[tuple[float, str]] = field(default_factory=list)
     captions: list[tuple[float, str, str]] = field(default_factory=list)
     speeds: list[tuple[float, float]] = field(default_factory=list)
+    events: list[tuple[float, str, dict]] = field(default_factory=list)
+    frame_size: list[int] | None = None
     end: float = 0.0
 
 
@@ -105,6 +107,14 @@ class Recorder:
 
     def normal(self) -> None:
         self.fast(1.0)
+
+    def event(self, kind: str, **args) -> None:
+        """Log an interaction for the renderer: focus, unfocus, move, click, hide, ring or ring_off.
+
+        Coordinates are in page pixels of the viewport, which are also the frame pixels.
+        """
+        if self.clip is not None:
+            self.clip.events.append((time.time(), kind, args))
 
     def hold(self, seconds: float) -> None:
         """Keep the current picture on screen for a while."""

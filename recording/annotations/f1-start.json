@@ -1,0 +1,90 @@
+{
+ "captions": [
+  [
+   0,
+   "Fallback",
+   "What if a flaw got past the review? Run the pipeline on the flawed branch"
+  ],
+  [
+   10.6,
+   "Fallback",
+   "The run starts on the branch with the planted flaw"
+  ]
+ ],
+ "events": [
+  [
+   0.5,
+   "focus",
+   {
+    "box": [
+     700,
+     100,
+     560,
+     260
+    ],
+    "zoom": 1.4
+   }
+  ],
+  [
+   2.9,
+   "move",
+   {
+    "x": 1158,
+    "y": 141
+   }
+  ],
+  [
+   3.9,
+   "click",
+   {
+    "x": 1158,
+    "y": 141
+   }
+  ],
+  [
+   4.5,
+   "move",
+   {
+    "x": 960,
+    "y": 218
+   }
+  ],
+  [
+   5.4,
+   "click",
+   {
+    "x": 960,
+    "y": 218
+   }
+  ],
+  [
+   6.9,
+   "move",
+   {
+    "x": 1143,
+    "y": 298
+   }
+  ],
+  [
+   7.8,
+   "click",
+   {
+    "x": 1143,
+    "y": 298
+   }
+  ],
+  [
+   10.8,
+   "focus",
+   {
+    "box": [
+     0,
+     110,
+     1280,
+     320
+    ],
+    "zoom": 1.3
+   }
+  ]
+ ]
+}

@@ -1,0 +1,11 @@
+{
+  "captions": [[0, "5  Release", "Claude reviews the instructions like code and makes two suggestions"],
+               [9.5, "5  Release", "Nothing is Important, so the review gate passes. Open comments still block the merge"]],
+  "events": [
+    [0.8, "focus", {"box": [100, 120, 610, 190], "zoom": 1.35}],
+    [2.0, "move", {"x": 200, "y": 166}],
+    [9.6, "focus", {"box": [70, 70, 640, 330], "zoom": 1.3}],
+    [10.6, "move", {"x": 180, "y": 245}],
+    [14.4, "unfocus", {}]
+  ]
+}

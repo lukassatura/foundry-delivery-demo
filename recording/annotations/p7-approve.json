@@ -1,0 +1,15 @@
+{
+  "captions": [[0, "5  Release", "The approver named in CODEOWNERS reviews the change"],
+               [2.9, "5  Release", "Submit review, then Approve"]],
+  "events": [
+    [0.2, "focus", {"box": [700, 210, 560, 230], "zoom": 1.35}],
+    [1.0, "move", {"x": 1011, "y": 291}],
+    [2.05, "click", {"x": 1011, "y": 291}],
+    [3.0, "focus", {"box": [300, 60, 660, 500], "zoom": 1.25}],
+    [2.6, "move", {"x": 335, "y": 430}],
+    [3.35, "click", {"x": 335, "y": 430}],
+    [3.6, "move", {"x": 836, "y": 513}],
+    [4.45, "click", {"x": 836, "y": 513}],
+    [5.8, "unfocus", {}]
+  ]
+}
