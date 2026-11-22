@@ -28,13 +28,21 @@ git push -q origin --delete prompt-agent/deviation-note-writer 2>/dev/null || tr
 export FOUNDRY_DEV_PROJECT_ENDPOINT="https://${ACCOUNT_NAME}.services.ai.azure.com/api/projects/${DEV_PROJECT}"
 export PROMPT_AGENT_JSON="$(git show demo-start:prompt-agents/deviation-note-writer.json)"
 .venv/bin/python - <<'PY'
-import json, os
+import json, os, time
 from azure.ai.projects import AIProjectClient
 from azure.ai.projects.models import PromptAgentDefinition
+from azure.core.exceptions import ServiceRequestError
 from azure.identity import DefaultAzureCredential
 d = json.loads(os.environ["PROMPT_AGENT_JSON"])
 project = AIProjectClient(endpoint=os.environ["FOUNDRY_DEV_PROJECT_ENDPOINT"], credential=DefaultAzureCredential())
-v = project.agents.create_version(agent_name=d["name"], definition=PromptAgentDefinition(model=d["model"], instructions=d["instructions"]), description="Demo reset")
+for attempt in range(4):  # a dropped connection should not stop the reset
+    try:
+        v = project.agents.create_version(agent_name=d["name"], definition=PromptAgentDefinition(model=d["model"], instructions=d["instructions"]), description="Demo reset")
+        break
+    except ServiceRequestError:
+        if attempt == 3:
+            raise
+        time.sleep(5)
 print(f"Dev prompt agent reset to the instructions in main (dev version {v.version}).")
 PY
 
