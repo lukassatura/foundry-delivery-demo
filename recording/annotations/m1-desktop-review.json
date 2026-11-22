@@ -1,0 +1,24 @@
+{
+  "captions": [
+    [0, "1  Change", "In the Claude app, the developer asks Claude Code to review the change"],
+    [251.3, "1  Change", "Claude Code loads the team's review skill and checks the branch"],
+    [281.2, "1  Change", "It finds the problem: the threshold comparison now drops the boundary"],
+    [286.0, "1  Change", "It confirms the finding by running the code"],
+    [301.1, "1  Change", "The local review reports one Important defect and offers to fix it"],
+    [305.6, "1  Change", "Advice only: the developer picks Not now and opens a pull request anyway"]
+  ],
+  "masks": [
+    [0, 252.0, [1436, 684, 140, 48], [25, 25, 25]]
+  ],
+  "events": [
+    [239.3, "focus", {"box": [1000, 1500, 1450, 180], "zoom": 1.8}],
+    [251.5, "focus", {"box": [700, 350, 1450, 420], "zoom": 1.6}],
+    [281.3, "focus", {"box": [700, 380, 1450, 240], "zoom": 1.7}],
+    [286.1, "focus", {"box": [700, 350, 1450, 420], "zoom": 1.6}],
+    [301.2, "focus", {"box": [720, 1060, 1430, 360], "zoom": 1.6}],
+    [304.9, "move", {"x": 1124, "y": 1342}],
+    [305.45, "click", {"x": 1124, "y": 1342}],
+    [305.8, "hide", {}],
+    [306.0, "focus", {"box": [700, 1180, 1500, 300], "zoom": 1.55}]
+  ]
+}

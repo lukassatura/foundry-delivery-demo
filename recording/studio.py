@@ -13,7 +13,7 @@ import subprocess
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from PIL import Image, ImageDraw
+from PIL import Image, ImageDraw, ImageFilter
 
 import brand
 
@@ -96,6 +96,7 @@ def load_clip(clip_dir: Path, annotations: Path | None = None) -> dict:
         data["events"] += [[start + t, kind, args] for t, kind, args in extra.get("events", [])]
         if "captions" in extra:
             data["captions"] = [[start + t, step, text] for t, step, text in extra["captions"]]
+        data["masks"] = data.get("masks", []) + [[start + t0, start + t1, box, fill] for t0, t1, box, fill in extra.get("masks", [])]
         data["zoom_max"] = extra.get("zoom_max", data.get("zoom_max"))
     first = Image.open(data["frames"][0][1])
     data["frame_size"] = data.get("frame_size") or list(first.size)
@@ -161,6 +162,21 @@ def write_card(encoder: Encoder, image_path: Path, seconds: float, fade_in=0.5, 
         encoder.write(card if alpha >= 1 else Image.blend(dark, card, max(alpha, 0.0)))
 
 
+def redact(image: Image.Image, masks: list) -> Image.Image:
+    """Cover private details: each mask is [t_from, t_to, [x, y, w, h], fill], fill an [r, g, b] colour
+    (match the background around the box) or "blur"."""
+    if not masks:
+        return image
+    image = image.copy()
+    for _, _, (x, y, w, h), fill in masks:
+        box = tuple(int(v) for v in (x, y, x + w, y + h))
+        if fill == "blur":
+            image.paste(image.crop(box).filter(ImageFilter.GaussianBlur(18)), box[:2])
+        else:
+            ImageDraw.Draw(image).rectangle(box, fill=tuple(fill))
+    return image
+
+
 def write_clip(encoder: Encoder, data: dict, cut=(0.0, None, 1.0)) -> float:
     """Render one clip; return its length in the video, in seconds."""
     camera, pointer = build_motion(data)
@@ -188,15 +204,17 @@ def write_clip(encoder: Encoder, data: dict, cut=(0.0, None, 1.0)) -> float:
         speed = speeds[speed_index][1] * cut[2]
 
         path = frames[frame_index][1]
-        if path != current_path:
+        active = tuple(i for i, m in enumerate(data.get("masks", [])) if m[0] <= t < m[1])
+        if (path, active) != current_path:
             source = Image.open(path).convert("RGB")
             if source.size != (width, height):
                 source = source.resize((width, height), Image.LANCZOS)
-            current_path = path
+            source = redact(source, [data["masks"][i] for i in active])
+            current_path = (path, active)
         cx, cy, z = camera.at(t)
         vw, vh = width / z, height / z
         left, top = cx - vw / 2, cy - vh / 2
-        key = (path, round(cx, 1), round(cy, 1), round(z, 4))
+        key = (path, active, round(cx, 1), round(cy, 1), round(z, 4))
         if key != page_cache_key:
             page_image = source.resize((PAGE_W, PAGE_H), Image.BICUBIC, box=(left, top, left + vw, top + vh))
             page_cache_key = key

@@ -72,3 +72,9 @@ The styled videos reuse the pull request footage of `record_demo.py` and `record
 ~/.cache/foundry-demo-recorder/bin/python recording/record_prompt_video.py render
 ```
 
+### Concept beats and the desktop review
+
+- `diagram_delivery_path.py` draws the delivery path diagram that the main video shows before each step. It needs BigHub's diagram library (`bhdg`) and its icons on `PYTHONPATH`; render the SVG to PNG at scale 3 into `DIAGRAM_DIR` (default `~/.cache/foundry-demo-recorder/diagram`). `boxes.json` holds the boxes each step highlights.
+- `diagram_beats.py` turns the diagram into a beat: the step highlighted, the rest dimmed, the camera easing in.
+- `window_capture.py` records the local review in the Claude app. Run it from a terminal of the Claude app after granting it Screen Recording permission; a person does the review in a new session. `annotations/m1-desktop-review.json` adds the captions, the camera, the click on Not now and a mask over a folder name.
+

@@ -11,6 +11,8 @@ starts no Claude Code Review. Before the foundry phase, production must serve th
 pull request #2 deployed (run "Roll back agent" with that version).
 """
 
+import json
+import os
 import re
 import sys
 import time
@@ -21,6 +23,7 @@ from playwright.sync_api import Page, sync_playwright
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import actions  # noqa: E402
 import brand  # noqa: E402
+import diagram_beats  # noqa: E402
 import foundry  # noqa: E402
 import studio  # noqa: E402
 from record_demo import PROFILES, REPO, gh_json, goto, latest_run, wait_for  # noqa: E402
@@ -178,41 +181,89 @@ def phase_summary(playwright) -> None:
     record_summary(playwright, Recorder(OUT), run["html_url"])
 
 
+DIAGRAM = Path(os.environ.get("DIAGRAM_DIR", Path.home() / ".cache/foundry-demo-recorder/diagram"))
+# What each step means, said on the delivery path diagram before the step's footage.
+BEATS = {
+    "0": ("", "The path every change takes, from a developer's laptop to production"),
+    "1": ("1  Change", "The developer changes the agent and asks Claude for a local review first"),
+    "2": ("2  Pull request", "A pull request proposes the change; Claude's review must pass to merge"),
+    "3": ("3  Fix and approval", "The developer fixes the finding; the named approver approves the change"),
+    "4": ("4  Merge and pipeline", "Merging starts the pipeline: unit tests, then an evaluation with the model"),
+    "5": ("5  Deploy", "Only the pipeline deploys: a new version of the hosted agent in Foundry"),
+    "6": ("6  Result and rollback", "The new version serves all traffic; a rollback switches back in one run"),
+}
+
+
+def beat(step: str, seconds: float = 6.0, caption: str | None = None, name: str | None = None) -> tuple:
+    """A clip of the delivery path diagram with the step highlighted (see diagram_beats.py)."""
+    meta = json.loads((DIAGRAM / "boxes.json").read_text())
+    label, text = BEATS[step]
+    frame, focus = diagram_beats.highlight_frame(DIAGRAM / "delivery-path.png", meta["steps"].get(step, []),
+                                                 meta["size"], OUT / f"beat-{name or step}.png")
+    folder = diagram_beats.beat_clip(OUT, f"beat-{name or step}", frame, focus, seconds, label, caption or text)
+    return ("clip", folder)
+
+
+def card(kind, title: str, subtitle: str) -> tuple:
+    return ("card", kind(title, subtitle), brand.card_seconds(title, subtitle))
+
+
 def phase_render(_playwright) -> None:
-    intro = brand.title_card(
-        "Demo · Claude Code · GitHub · Microsoft Foundry",
-        "A delivery path for AI agents",
-        "A change to an agent reaches production only after Claude's code review, a named approver and a passing evaluation. Only the pipeline deploys.",
-        ["Claude Code", "GitHub", "Microsoft Foundry", "Synthetic data"],
-    )
-    outro = brand.end_card(
-        "No change reaches production without:",
-        ["Claude's code review", "A named approver", "A passing evaluation"],
-        "Only the pipeline deploys, with a federated identity and no stored secret.",
-    )
-    old = ["01-change", "02a-open", "02b-finding", "03a-fix", "03b-resolve", "03c-approve", "03b-gate", "03d-merge",
-           "04a-run", "04b-evaluation", "05-deploy"]
-    cuts = {"02a-open": (0.0, None, 1.6)}
-    parts = [("card", intro, 4.5)]
-    parts += [("clip", OLD / name, cuts.get(name, (0.0, None, 1.0))) for name in old]
-    parts += [("clip", OUT / name) for name in ("m5-foundry", "m6-rollback", "m6-rollback-done", "m6-foundry")]
-    parts += [("card", outro, 5.5)]
+    review = OUT / "m1-desktop-review"
+    parts = [
+        card(brand.title_card, "A delivery path for AI agents",
+             "Every change passes Claude's code review, a named approver and an evaluation. "
+             "Only the pipeline deploys it to Microsoft Foundry."),
+        beat("0", 6.5),
+        beat("1"),
+        # The local review in the Claude app: typing, the skill at work (4x), the finding, Not now.
+        # The still frames of the results are held longer so that they can be read.
+        ("clip", review, (239.0, 251.3, 1.0)),
+        ("clip", review, (251.3, 281.2, 4.0)),
+        ("clip", review, (281.2, 286.0, 1.0)),
+        ("clip", review, (286.0, 301.1, 4.0)),
+        ("clip", review, (301.1, 304.9, 0.4)),
+        ("clip", review, (304.9, 306.5, 1.0)),
+        ("clip", review, (306.5, 310.0, 0.55)),
+        beat("2"),
+        ("clip", OLD / "02a-open", (0.0, None, 1.6)),
+        ("clip", OLD / "02b-finding"),
+        beat("3"),
+        ("clip", OLD / "03a-fix"),
+        ("clip", OLD / "03b-resolve"),
+        ("clip", OLD / "03c-approve"),
+        ("clip", OLD / "03b-gate"),
+        beat("4"),
+        ("clip", OLD / "03d-merge"),
+        ("clip", OLD / "04a-run"),
+        ("clip", OLD / "04b-evaluation"),
+        beat("5"),
+        ("clip", OLD / "05-deploy"),
+        ("clip", OUT / "m5-foundry", (0.0, 11.7, 1.0)),
+        beat("6"),
+        ("clip", OUT / "m5-foundry", (11.7, 18.1, 1.0)),
+        ("clip", OUT / "m5-foundry", (18.1, 36.0, 2.0)),   # typing the two CSV reports
+        ("clip", OUT / "m5-foundry", (36.0, None, 1.0)),
+        ("clip", OUT / "m6-rollback"),
+        ("clip", OUT / "m6-rollback-done"),
+        ("clip", OUT / "m6-foundry"),
+        card(brand.end_card, "No change reaches production unchecked",
+             "Claude reviews it, a named person approves it and an evaluation tests it. "
+             "Then the pipeline deploys, with no personal account and no stored secret."),
+    ]
     studio.render_video(OUT / "delivery-demo.mp4", parts, annotations_dir=HERE / "annotations")
 
-    fallback_intro = brand.title_card(
-        "Demo · fallback",
-        "A failing evaluation stops the deploy",
-        "The same pipeline, run on the branch with the planted flaw. The unit tests pass; the evaluation does not.",
-        ["GitHub Actions", "Evaluation against the model", "Synthetic data"],
-    )
-    fallback_outro = brand.end_card(
-        "A failed evaluation fails the pipeline.",
-        ["The unit tests pass", "The evaluation catches both boundary cases", "The deploy job never runs"],
-        "A metric below its threshold stops the change like a failed test.",
-    )
     studio.render_video(
         OUT / "delivery-demo-failing-evaluation.mp4",
-        [("card", fallback_intro, 4.0), ("clip", OLD / "f1-start"), ("clip", OLD / "f2-run"), ("card", fallback_outro, 4.5)],
+        [
+            card(brand.title_card, "A failing evaluation stops the deploy",
+                 "The same pipeline, run on the branch with the planted flaw: the unit tests pass, the evaluation does not."),
+            beat("4", 6.0, "If a flaw gets past the review, the evaluation in the pipeline still stops it", "f4"),
+            ("clip", OLD / "f1-start"),
+            ("clip", OLD / "f2-run"),
+            card(brand.end_card, "A failed evaluation fails the pipeline",
+                 "The evaluation catches both boundary cases, so the deploy job never runs."),
+        ],
         annotations_dir=HERE / "annotations",
     )
 

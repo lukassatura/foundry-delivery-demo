@@ -251,23 +251,15 @@ CUTS = {
 
 
 def phase_render(_playwright) -> None:
-    intro = brand.title_card(
-        "Demo · Microsoft Foundry · prompt agents",
-        "A business owner builds and changes an AI agent",
-        "No code in Microsoft Foundry, and every change passes the same gates as code before it reaches production.",
-        ["Microsoft Foundry", "GitHub", "Claude Code Review", "Synthetic data"],
-    )
-    outro = brand.end_card(
-        "Business owners change prompts without code.",
-        ["Claude reviews every change to the instructions",
-         "A named approver approves it",
-         "An evaluation tests it before production"],
-        "Only the pipeline creates the production version.",
-    )
-    parts = [("card", intro, 3.5)]
+    intro = ("A business owner builds and changes an AI agent",
+             "No code in Microsoft Foundry, and every change passes the same gates as code before it reaches production.")
+    outro = ("Business owners change prompts without code",
+             "Claude reviews every change to the instructions, a named approver approves it and an evaluation "
+             "tests it. Only the pipeline creates the production version.")
+    parts = [("card", brand.title_card(*intro), brand.card_seconds(*intro))]
     for folder, name in EDIT_LIST:
         parts += [("clip", folder / name, cut) for cut in CUTS.get(name, [(0.0, None, 1.0)])]
-    parts.append(("card", outro, 4.5))
+    parts.append(("card", brand.end_card(*outro), brand.card_seconds(*outro)))
     studio.render_video(OUT / "prompt-agent-demo.mp4", parts, annotations_dir=HERE / "annotations")
 
 

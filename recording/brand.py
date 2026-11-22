@@ -71,32 +71,38 @@ HERO_CSS = f"""
     radial-gradient(ellipse 60% 90% at 100% 0%, rgba(115,76,219,0.60), transparent 70%),
     radial-gradient(ellipse 40% 60% at 85% 100%, rgba(115,76,219,0.35), transparent 70%); }}
 .logo svg {{ height: 44px; width: auto; }}
-.eyebrow {{ display: inline-flex; align-items: center; border-radius: 6px; padding: 6px 14px; font-size: 24px;
-  font-weight: 500; color: {BRAND_100}; background: rgba(255,255,255,0.10); box-shadow: inset 0 0 0 1.5px rgba(255,255,255,0.20); }}
 h1 {{ font-size: 84px; line-height: 1.12; font-weight: 600; letter-spacing: -0.02em; margin: 36px 0 0; max-width: 1450px; }}
 .lead {{ font-size: 34px; line-height: 1.45; color: {BRAND_100}; margin-top: 28px; max-width: 1350px; }}
-.chips {{ position: absolute; left: 160px; bottom: 120px; display: flex; gap: 14px; }}
-.checks {{ margin-top: 48px; display: flex; flex-direction: column; gap: 22px; }}
-.check {{ display: flex; align-items: center; gap: 22px; font-size: 38px; font-weight: 500; }}
-.check i {{ width: 44px; height: 44px; border-radius: 50%; background: {SUCCESS_500}; display: inline-flex;
-  align-items: center; justify-content: center; font-style: normal; color: {GRAY_950}; font-size: 28px; font-weight: 700; }}
 """
 
 
-def title_card(eyebrow: str, title: str, lead: str, chips: list[str]) -> Path:
-    chips_html = "".join(f'<span class="eyebrow">{c}</span>' for c in chips)
-    body = f"""<div class="hero"><div class="logo">{_logo()}</div>
-      <div style="margin-top:120px"><span class="eyebrow">{eyebrow}</span></div>
-      <h1>{title}</h1><p class="lead">{lead}</p><div class="chips">{chips_html}</div></div>"""
-    return _render(_page(body, HERO_CSS, 1920, 1080), 1920, 1080)
+CARD_CSS = HERO_CSS + """
+.content { position: absolute; left: 160px; right: 200px; top: 50%; transform: translateY(-46%); }
+.content h1 { margin: 0; }
+.content .lead { margin-top: 36px; font-size: 38px; max-width: 1400px; }
+"""
 
 
-def end_card(title: str, checks: list[str], closing: str) -> Path:
-    checks_html = "".join(f'<div class="check"><i>✓</i>{c}</div>' for c in checks)
+def _card(title: str, subtitle: str) -> Path:
     body = f"""<div class="hero"><div class="logo">{_logo()}</div>
-      <h1 style="margin-top:110px">{title}</h1><div class="checks">{checks_html}</div>
-      <p class="lead" style="margin-top:44px">{closing}</p></div>"""
-    return _render(_page(body, HERO_CSS, 1920, 1080), 1920, 1080)
+      <div class="content"><h1>{title}</h1><p class="lead">{subtitle}</p></div></div>"""
+    return _render(_page(body, CARD_CSS, 1920, 1080), 1920, 1080)
+
+
+def title_card(title: str, subtitle: str) -> Path:
+    """The intro: the logo, a title and a short description. Nothing else, so it reads at a glance."""
+    return _card(title, subtitle)
+
+
+def end_card(title: str, subtitle: str) -> Path:
+    """The outro: the takeaway as a title and one or two sentences, in the same layout as the intro."""
+    return _card(title, subtitle)
+
+
+def card_seconds(title: str, subtitle: str) -> float:
+    """Time on screen for a card: 2 seconds to take it in plus 2.5 words a second, at least 6 seconds."""
+    words = len(f"{title} {subtitle}".split())
+    return max(6.0, round(2.0 + words / 2.5, 1))
 
 
 BAR_CSS = f"""
